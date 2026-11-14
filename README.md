@@ -77,3 +77,12 @@ soil, paths and plants are clipped against roads and sidewalks.
 
 `src/marine-drive-layout.js` defines the planting plan, `src/marine-drive.js`
 builds the scene, and `src/landscape-paving.js` protects the paved corridors.
+
+## Academic building models
+
+`src/academic-buildings.js` reconstructs the original academic/admin complex
+and auditorium from the supplied reference, retaining mapped footprints and
+courtyards. It adds three-storey wings, red vertical bays, projecting stone
+piers, glazed stair towers, stepped caps, an entrance portal, solar arrays and
+roof monitors. The library lantern has shallower terraced roofs. Hidden
+elevations and dimensions are visual approximations, not a measured survey.
