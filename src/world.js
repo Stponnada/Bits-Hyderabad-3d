@@ -88,7 +88,7 @@ export function buildRoads(data, scene, height) {
   for (const r of data.roads) {
     const opt = { closed: r.closed, vScale: 1 / 8 };
     const pts = r.closed ? r.pts.slice(0, -1) : r.pts;
-    if (pts.length < 2) continue;
+    if (pts.length < 2 || r.hidden) continue;
     if (r.kind === 'foot') addRibbon(layers.foot.geo, pts, r.w, yf(layers.foot.y), { ...opt, vScale: 1 / 1.6, uRep: r.w / 1.6 });
     else if (r.kind === 'path' || r.kind === 'track') addRibbon(layers.path.geo, pts, r.w, yf(layers.path.y), { ...opt, vScale: 1 / 6 });
     else {
@@ -199,6 +199,7 @@ export function buildAreas(data, scene, env) {
   const masts = [];
 
   for (const a of data.areas) {
+    if (a.hidden) continue;
     const pts = a.pts;
     const c = centroid(pts);
     if (a.name) places.push({ name: a.name, at: [c[0], 10, c[1]] });

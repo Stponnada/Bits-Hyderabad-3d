@@ -47,6 +47,7 @@ export function buildBuildings(data, scene) {
   const byId = new Map(data.buildings.map((b) => [b.id, b]));
   const heightOf = (b) => {
     const st = STYLES[KIND_STYLE[b.kind] || 'civic'];
+    if (b.h) return b.h;
     let h = b.levels * st.floorH;
     if (b.kind === 'sac') h = 3 * 4.2;
     return h;
@@ -57,7 +58,7 @@ export function buildBuildings(data, scene) {
   const props = { panels: [], tanks: [], heads: [] };
   const r = rng(99);
 
-  function walls(pts, y0, H, par, isHole, style, levels, allowWin = true) {
+  function walls(pts, y0, H, par, isHole, style, levels, allowWin = true, skip = null) {
     const st = STYLES[style];
     const n = pts.length;
     const top = H + par;
@@ -65,7 +66,7 @@ export function buildBuildings(data, scene) {
       const p1 = pts[i], p2 = pts[(i + 1) % n];
       const dx = p2[0] - p1[0], dz = p2[1] - p1[1];
       const len = Math.hypot(dx, dz);
-      if (len < 0.05) continue;
+      if (len < 0.05 || (skip && skip.has(i))) continue;   // skipped faces are modelled elsewhere
       let nx = dz / len, nz = -dx / len;
       if (isHole) { nx = -nx; nz = -nz; }
       const win = allowWin && len >= st.bayW * 0.62;
@@ -164,7 +165,7 @@ export function buildBuildings(data, scene) {
     const H = heightOf(b);
     const hip = (b.kind === 'mess' || b.kind === 'auditorium') && b.holes.length === 0;
     const par = hip ? 0 : st.parapet;
-    walls(b.outer, 0, H, par, false, style, b.levels, b.kind !== 'utility');
+    walls(b.outer, 0, H, par, false, style, b.levels, b.kind !== 'utility', b.skipEdges);
     for (const h of b.holes) walls(h, 0, H, par, true, style, b.levels);
     if (hip) {
       hipRoof(b.outer, H, b.kind === 'auditorium' ? 7.5 : 5.5, 'metal_pink');

@@ -4,6 +4,7 @@ import { buildBuildings } from './buildings.js';
 import { makeHeight, buildGround, buildRoads, buildAreas, buildRocks, buildLamps, buildGate, buildBoundaryWall, GATE, fbm } from './world.js';
 import { buildTrees, updatePlantLOD, foliageGlow } from './plants.js';
 import { prepareRoundabout, buildRoundabout } from './roundabout.js';
+import { prepareQuad, buildQuad } from './quad.js';
 import { textSprite, canvasTex } from './textures.js';
 import { pip, centroid } from './geo.js';
 
@@ -153,6 +154,7 @@ async function init() {
   // the mapped guard booths are replaced by the modelled gate
   data.buildings = data.buildings.filter((b) => { const c = centroid(b.outer); return !(b.kind === 'kiosk' && Math.hypot(c[0] - GATE.x, c[1] - GATE.z) < 26); });
   prepareRoundabout(data);
+  prepareQuad(data);
   height = makeHeight(data.boundary);
   buildGround(data, scene, height);
   buildRoads(data, scene, height);
@@ -164,6 +166,7 @@ async function init() {
   buildLamps(data, scene, env);
   buildGate(data, scene);
   buildRoundabout(scene, env);
+  buildQuad(scene, B.heightOf);
   buildBoundaryWall(data, scene, height);
 
   // labels
