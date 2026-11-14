@@ -198,6 +198,7 @@ async function init() {
   $('intro').classList.add('ready');
   if (qs.has('shot')) $('intro').remove();
   renderer.setAnimationLoop(frame);
+  window.__height = height; window.__data = data;
   window.__ready = true;
 }
 

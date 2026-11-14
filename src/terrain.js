@@ -95,19 +95,25 @@ export function makeHeight(data, dem) {
     // buildings beyond the fine grid cannot be given a pad, so they are sunk to their lowest corner
     b.y = host ? host.y : fine(bb[0], bb[1]) && fine(bb[2], bb[3]) ? meanAt(b.outer) : Math.min(...b.outer.map((p) => raw(p[0], p[1])));
   }
-  for (const b of grounded) if (b.padWith != null && byId.has(b.padWith)) b.y = byId.get(b.padWith).y;
-  // a building within 25 m of a larger one stands on the same terrace: on a slope, separate levels
-  // that close together leave a bank a few metres high across the yard between them
+  // Buildings that stand close together share one terrace, at the average of their natural levels weighted by
+  // floor area. Within 25 m always: separate levels that close leave a bank across the yard between them.
+  // Across a road (up to 48 m) too, unless both are small and the land really drops between them: a road
+  // squeezed between two terraces at different levels has nowhere to lie flat.
   {
-    const order = grounded.map((b) => ({ b, bb: bbox(b.outer), area: Math.abs(polyArea(b.outer)) })).sort((p, q) => q.area - p.area);
-    order.forEach((s, i) => {
-      if (s.b.padWith != null) return;
-      for (let k = 0; k < i; k++) {
-        const o = order[k];
-        if (s.bb[0] > o.bb[2] + 25 || s.bb[2] < o.bb[0] - 25 || s.bb[1] > o.bb[3] + 25 || s.bb[3] < o.bb[1] - 25) continue;
-        if (s.b.outer.some((p) => pip(p[0], p[1], o.b.outer) || distToPoly(p[0], p[1], o.b.outer) < 25)) { s.b.y = o.b.y; return; }
-      }
-    });
+    const N = grounded.map((b) => ({ b, bb: bbox(b.outer), area: Math.abs(polyArea(b.outer)) }));
+    const parent = N.map((_, i) => i);
+    const find = (i) => { while (parent[i] !== i) i = parent[i] = parent[parent[i]]; return i; };
+    const gap = (s, o) => Math.min(...s.b.outer.map((p) => (pip(p[0], p[1], o.b.outer) ? 0 : distToPoly(p[0], p[1], o.b.outer))));
+    for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) {
+      const s = N[i], o = N[j];
+      if (s.b.padWith === o.b.id || o.b.padWith === s.b.id) { parent[find(i)] = find(j); continue; }
+      if (s.bb[0] > o.bb[2] + 48 || s.bb[2] < o.bb[0] - 48 || s.bb[1] > o.bb[3] + 48 || s.bb[3] < o.bb[1] - 48) continue;
+      const d = Math.min(gap(s, o), gap(o, s));
+      if (d < 25 || (d < 48 && (Math.abs(s.b.y - o.b.y) < 3.5 || Math.min(s.area, o.area) > 1500))) parent[find(i)] = find(j);
+    }
+    const sum = new Map();
+    N.forEach((n, i) => { const r = find(i), t = sum.get(r) || [0, 0]; t[0] += n.area; t[1] += n.area * n.b.y; sum.set(r, t); });
+    N.forEach((n, i) => { const t = sum.get(find(i)); n.b.y = t[1] / t[0]; });
   }
   for (const p of data.pads || []) p.y = p.like != null && byId.has(p.like) ? byId.get(p.like).y : demAt(p.at[0], p.at[1]);
   const pads = [...areas.map((a) => [a.pts, a.y]), ...(data.pads || []).map((p) => [p.pts, p.y]), ...grounded.map((b) => [b.outer, b.y])];
