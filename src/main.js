@@ -6,6 +6,7 @@ import { buildTrees, updatePlantLOD, foliageGlow } from './plants.js';
 import { prepareRoundabout, buildRoundabout } from './roundabout.js';
 import { textSprite, canvasTex } from './textures.js';
 import { pip, centroid } from './geo.js';
+import { createContactShading } from './contact-shading.js';
 
 const qs = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -22,6 +23,8 @@ document.body.prepend(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.3, 12000);
 scene.fog = new THREE.FogExp2('#cfdbe4', 0.0003);
+const contactShading = createContactShading(renderer, scene, camera);
+contactShading.resize(innerWidth, innerHeight);
 
 // ------------------------------------------------------------- sky + lights
 const sky = new Sky();
@@ -30,9 +33,9 @@ scene.add(sky);
 const sun = new THREE.DirectionalLight('#fff1dc', 3);
 sun.castShadow = true;
 sun.shadow.mapSize.set(4096, 4096);
-const SH = 330;
+let SH = 192;
 Object.assign(sun.shadow.camera, { left: -SH, right: SH, top: SH, bottom: -SH, near: 10, far: 2200 });
-sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.35;
+sun.shadow.bias = -0.00002; sun.shadow.normalBias = 0.055;
 scene.add(sun, sun.target);
 const hemi = new THREE.HemisphereLight('#cfe2ff', '#8d7a5a', 0.7);
 scene.add(hemi);
@@ -74,7 +77,7 @@ scene.add(clouds);
 const env = { nightEmissive: [], nightVisible: [] };
 const sunDir = new THREE.Vector3();
 const TIMES = {
-  day: { label: 'Midday', el: 54, az: 145, col: '#fff3e0', int: 2.5, hemi: ['#d4e4ff', '#8f7c5c', 0.6], envI: 0.4, exp: 0.58, fog: '#c7d6e2', dens: 0.00028, turb: 4.5, ray: 1.1, win: 0, lamps: false, glow: 0.17, cloud: ['#ffffff', 0.9] },
+  day: { label: 'Midday', el: 54, az: 145, col: '#fff4e5', int: 2.9, hemi: ['#cbdfff', '#7d7059', 0.55], envI: 0.45, exp: 0.62, fog: '#c7d6e2', dens: 0.00028, turb: 4.5, ray: 1.1, win: 0, lamps: false, glow: 0.10, cloud: ['#ffffff', 0.9] },
   evening: { label: 'Golden hour', el: 11, az: 258, col: '#ffb070', int: 3.4, hemi: ['#f2c9a8', '#6d5c4a', 0.6], envI: 0.55, exp: 0.8, fog: '#e0b693', dens: 0.00034, turb: 8, ray: 2.4, win: 0.55, lamps: true, glow: 0.24, cloud: ['#ffd2b0', 0.85] },
   night: { label: 'Night', el: 46, az: 205, col: '#9fb6ea', int: 0.55, hemi: ['#44558a', '#15161c', 0.55], envI: 0.06, exp: 0.85, fog: '#080d19', dens: 0.0004, turb: 4, ray: 1, win: 1.5, lamps: true, night: true, glow: 0.02, cloud: ['#2a3350', 0.5] },
 };
@@ -93,6 +96,7 @@ function applyTime(key) {
   sky.visible = !t.night; stars.visible = !!t.night;
   scene.background = t.night ? new THREE.Color('#060a15') : null;
   sun.color.set(t.col); sun.intensity = t.int;
+  sun.shadow.needsUpdate = true;
   hemi.color.set(t.hemi[0]); hemi.groundColor.set(t.hemi[1]); hemi.intensity = t.hemi[2];
   scene.fog.color.set(t.fog); scene.fog.density = t.dens;
   renderer.toneMappingExposure = t.exp;
@@ -104,6 +108,7 @@ function applyTime(key) {
   for (const o of env.nightVisible) o.visible = t.lamps;
   for (const o of env.nightOnly || []) o.visible = !!t.night;
   foliageGlow.value = t.glow;
+  contactShading.setNight(!!t.night);
   clouds.material.color.set(t.cloud[0]); clouds.material.opacity = t.cloud[1];
   $('time').textContent = t.label;
 }
@@ -175,7 +180,7 @@ async function init() {
   for (const l of all) {
     if (!l.name || seen.has(l.name)) continue; seen.add(l.name);
     const s = textSprite(l.name, { size: l.major ? 44 : 36 });
-    s.position.set(...l.at); s.userData = l;
+    s.position.set(...l.at); s.userData = l; s.layers.set(1);
     scene.add(s); labelSprites.push(s); named.push(l);
   }
 
@@ -375,20 +380,27 @@ function frame(now) {
   move(dt);
   // keep the shadow frustum around the viewer, snapped to texels to avoid shimmer
   st.set(0, 0, -1).applyEuler(camera.rotation); st.y = 0; if (st.lengthSq() > 0) st.normalize();
-  const reach = Math.min(240, 60 + camera.position.y * 0.8);
+  const extent = Math.ceil(THREE.MathUtils.lerp(180, 360, THREE.MathUtils.smoothstep(camera.position.y, 2, 220)) / 16) * 16;
+  if (extent !== SH) {
+    SH = extent;
+    Object.assign(sun.shadow.camera, { left: -SH, right: SH, top: SH, bottom: -SH });
+    sun.shadow.camera.updateProjectionMatrix();
+  }
+  const reach = Math.min(SH * 0.45, 40 + camera.position.y * 0.8);
   const tx = camera.position.x + st.x * reach, tz = camera.position.z + st.z * reach;
-  const snap = (SH * 2) / 4096 * 8;
+  const snap = (SH * 2) / 4096;
   sun.target.position.set(Math.round(tx / snap) * snap, 0, Math.round(tz / snap) * snap);
   sun.position.copy(sun.target.position).addScaledVector(sunDir, 1100);
   sky.position.copy(camera.position); stars.position.copy(camera.position);
   clouds.position.set(camera.position.x, 2400, camera.position.z); clouds.rotation.y = now * 0.000004;
   updatePlantLOD(camera.position, now);
-  renderer.render(scene, camera);
+  contactShading.render();
   drawMap(); hud(now);
 }
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  contactShading.resize(innerWidth, innerHeight);
 });
 window.__go = (x, y, z, yaw, pitch) => { camera.position.set(x, y, z); player.yaw = THREE.MathUtils.degToRad(yaw); player.pitch = THREE.MathUtils.degToRad(pitch); };
 window.__time = applyTime;
