@@ -1,3 +1,4 @@
+import { surfaceMaps, facadeRoughness } from './surfaces.js';
 import * as THREE from 'three';
 import { Geo, polyArea, centroid, pip, bbox, addFlatPoly } from './geo.js';
 import { STYLES, facade, plainTex, rng, curtainTex } from './textures.js';
@@ -20,7 +21,8 @@ export function buildBuildings(data, scene) {
   const wallMat = (style, levels, windows) => {
     const key = `w_${style}_${levels}_${windows ? 1 : 0}`;
     if (!mats.has(key)) {
-      const m = new THREE.MeshStandardMaterial({ map: facade(style, levels, { windows }), roughness: 0.92, metalness: 0 });
+      const map = facade(style, levels, { windows });
+      const m = new THREE.MeshStandardMaterial({ map, roughnessMap: facadeRoughness(map), roughness: 1, metalness: 0 });
       if (windows) {
         m.emissiveMap = facade(style, levels, { windows, emissive: true });
         m.emissive = new THREE.Color('#ffffff'); m.emissiveIntensity = 0;
@@ -34,8 +36,8 @@ export function buildBuildings(data, scene) {
     if (!mats.has(key)) mats.set(key, new THREE.MeshStandardMaterial({ map: tex(), roughness: 0.9, metalness: 0, ...opts }));
     return key;
   };
-  simple('roof_concrete', () => plainTex('#b4afa3', 5, 0.1));
-  simple('roof_white', () => plainTex('#d9d7d0', 6, 0.08));
+  simple('roof_concrete', () => plainTex('#b4afa3', 5, 0.1), surfaceMaps('concrete', '#b4afa3'));
+  simple('roof_white', () => plainTex('#d9d7d0', 6, 0.08), surfaceMaps('concrete', '#d3d0c5'));
   simple('roof_blue', () => plainTex('#6f95c4', 7, 0.05, 8), { roughness: 0.55, metalness: 0.3 });
   simple('roof_pink', () => plainTex('#c79a98', 8, 0.05, 8), { roughness: 0.6, metalness: 0.2 });
   simple('metal_pink', () => plainTex('#c4928c', 9, 0.05, 8), { roughness: 0.55, metalness: 0.25 });
