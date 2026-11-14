@@ -1,3 +1,4 @@
+import { createAcademicDetails, academicHeight, MAIN_ACADEMIC_ID, AUDITORIUM_ID } from './academic-buildings.js';
 import { surfaceMaps, facadeRoughness } from './surfaces.js';
 import * as THREE from 'three';
 import { Geo, polyArea, centroid, pip, bbox, addFlatPoly } from './geo.js';
@@ -41,13 +42,16 @@ export function buildBuildings(data, scene) {
   simple('roof_blue', () => plainTex('#6f95c4', 7, 0.05, 8), { roughness: 0.55, metalness: 0.3 });
   simple('roof_pink', () => plainTex('#c79a98', 8, 0.05, 8), { roughness: 0.6, metalness: 0.2 });
   simple('metal_pink', () => plainTex('#c4928c', 9, 0.05, 8), { roughness: 0.55, metalness: 0.25 });
-  simple('terracotta', () => plainTex('#b65d3c', 10, 0.07, 6), { roughness: 0.8 });
+  simple('terracotta', () => plainTex('#a66756', 10, 0.07, 6), { roughness: 0.8 });
   simple('glass', () => plainTex('#2f5560', 12, 0.03, 4), { roughness: 0.15, metalness: 0.6 });
   simple('orange', () => plainTex('#d2622c', 13, 0.04));
   if (!mats.has('curtain')) mats.set('curtain', new THREE.MeshStandardMaterial({ map: curtainTex(), roughness: 0.18, metalness: 0.55 }));
 
+  const academicDetails = createAcademicDetails({ G, mats, nightMats });
   const byId = new Map(data.buildings.map((b) => [b.id, b]));
   const heightOf = (b) => {
+    const customHeight = academicHeight(b);
+    if (customHeight != null) return customHeight;
     const st = STYLES[KIND_STYLE[b.kind] || 'civic'];
     let h = b.levels * st.floorH;
     if (b.kind === 'sac') h = 3 * 4.2;
@@ -137,12 +141,12 @@ export function buildBuildings(data, scene) {
       const parent = data.buildings.find((p) => p.kind === 'academic' && pip(...centroid(b.outer), p.outer));
       const H = parent ? heightOf(parent) : 15.6;
       const c = centroid(b.outer);
-      frustum(b.outer, c, H, H + 2.6, 1.0, 1.0, 'glass');
-      frustum(b.outer, c, H + 2.6, H + 3.6, 1.1, 0.86, 'terracotta');
-      frustum(b.outer, c, H + 3.6, H + 5.2, 0.72, 0.72, 'glass');
-      frustum(b.outer, c, H + 5.2, H + 6.1, 0.8, 0.58, 'terracotta');
-      frustum(b.outer, c, H + 6.1, H + 7.2, 0.42, 0.42, 'glass');
-      frustum(b.outer, c, H + 7.2, H + 8.2, 0.5, 0.2, 'terracotta');
+      frustum(b.outer, c, H, H + 1.4, 1.0, 1.0, 'glass');
+      frustum(b.outer, c, H + 1.4, H + 2.2, 1.1, 0.86, 'terracotta');
+      frustum(b.outer, c, H + 2.2, H + 3.0, 0.72, 0.72, 'glass');
+      frustum(b.outer, c, H + 3.0, H + 3.7, 0.8, 0.58, 'terracotta');
+      frustum(b.outer, c, H + 3.7, H + 4.3, 0.42, 0.42, 'glass');
+      frustum(b.outer, c, H + 4.3, H + 5.2, 0.5, 0.2, 'terracotta');
       labels.push({ name: 'Central Library', at: [c[0], H + 14, c[1]], major: true });
       // glass curtain wall on the wing's north face (the view from the main gate)
       if (parent) {
@@ -164,6 +168,12 @@ export function buildBuildings(data, scene) {
     }
 
     const H = heightOf(b);
+    if (b.id === MAIN_ACADEMIC_ID || b.id === AUDITORIUM_ID) {
+      academicDetails.build(b, H);
+      footprints.push({ outer: b.outer, bb: bbox(b.outer), holes: b.holes, h: H });
+      if (b.name) { const c = centroid(b.outer); labels.push({ name: b.name, at: [c[0], H + 9, c[1]], major: true }); }
+      continue;
+    }
     const hip = (b.kind === 'mess' || b.kind === 'auditorium') && b.holes.length === 0;
     const par = hip ? 0 : st.parapet;
     walls(b.outer, 0, H, par, false, style, b.levels, b.kind !== 'utility');
@@ -231,6 +241,7 @@ export function buildBuildings(data, scene) {
     props.tanks.forEach((p, i) => { dummy.position.set(p.x, p.y + 1.3, p.z); dummy.rotation.set(0, 0, 0); dummy.updateMatrix(); tm.setMatrixAt(i, dummy.matrix); });
     tm.castShadow = true; group.add(tm);
   }
+  academicDetails.finish(group);
   scene.add(group);
   return { group, footprints, labels, nightMats, heightOf };
 }
