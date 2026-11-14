@@ -1,3 +1,4 @@
+import { marineReserved } from './marine-drive-layout.js';
 import { bbox, pip, distToPoly } from './geo.js';
 
 export const FOREST = { x: -510, z: -148, rx: 42, rz: 68 };
@@ -52,6 +53,7 @@ export function configureForestZones(data, gate) {
     }
     distance = Math.min(2, distance, pilotForestDistance(x, z));
     if (Math.hypot(x - gate.x, z - gate.z) < 65) distance = 2;
+    if (marineReserved(x, z, 2)) distance = 2;
     raw[i] = distance;
     const blocked = (obstacles.get(`${Math.floor(x / 32)}|${Math.floor(z / 32)}`) || []).some((o) => {
       if (o.pts) return pip(x, z, o.pts) || distToPoly(x, z, o.pts) < 3;

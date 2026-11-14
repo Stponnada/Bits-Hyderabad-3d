@@ -47,8 +47,7 @@ Click the minimap to teleport, or use the "Jump to" list. A view can be linked d
 Choose **Woodland Trail**, **North Boundary Woods**, **East Boundary Woods**,
 or **South Boundary Woods** from Jump To. The forest treatment follows existing
 planting around the campus wall, approximately 55 metres inside and 15 metres
-outside the boundary. Existing tree positions and the 51,116-tree total are
-preserved; entrances, paved corridors, buildings, water and sports grounds are
+outside the boundary. The forest follows existing tree positions and preserves the 51,116-tree total; entrances, paved corridors, buildings, water and sports grounds are
 excluded from the new ground cover. Cleared stretches remain open.
 
 `src/forest-zone.js` derives coverage from the campus boundary and mapped trees.
@@ -67,3 +66,23 @@ both the source and the assets.
 
 Map data (c) OpenStreetMap contributors, ODbL. Land cover was derived from Esri World Imagery,
 which is used as a reference only and is not redistributed.
+
+## Marine Drive landscaping
+
+The academic-side lawns and hostel-side flowerbeds follow the supplied aerial
+reference. Existing trees in the formal planting corridor are relocated to its
+woodland edge, maintaining the 51,116-tree total. A single palm row follows the
+median. The flowerbeds continue to the southern roundabout's east exit; their
+soil, paths and plants are clipped against roads and sidewalks.
+
+`src/marine-drive-layout.js` defines the planting plan, `src/marine-drive.js`
+builds the scene, and `src/landscape-paving.js` protects the paved corridors.
+
+## Academic building models
+
+`src/academic-buildings.js` reconstructs the original academic/admin complex
+and auditorium from the supplied reference, retaining mapped footprints and
+courtyards. It adds three-storey wings, red vertical bays, projecting stone
+piers, glazed stair towers, stepped caps, an entrance portal, solar arrays and
+roof monitors. The library lantern has shallower terraced roofs. Hidden
+elevations and dimensions are visual approximations, not a measured survey.

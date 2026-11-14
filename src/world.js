@@ -1,3 +1,4 @@
+import { marineReserved } from './marine-drive-layout.js';
 import { groundMaterial } from './ground-detail.js';
 import { surfaceMaterial } from './surfaces.js';
 import * as THREE from 'three';
@@ -369,7 +370,7 @@ export function buildRocks(data, scene, height) {
   const d = new THREE.Object3D();
   const col = new THREE.Color();
   for (let v = 0; v < 3; v++) {
-    const arr = list.filter((_, i) => i % 3 === v);
+    const arr = list.filter((q, i) => i % 3 === v && !marineReserved(q.x, q.z));
     const im = new THREE.InstancedMesh(mk(v * 13.7 + 1), mat, arr.length);
     arr.forEach((q, i) => {
       d.position.set(q.x, height(q.x, q.z) + (q.lift || 0) + q.s * 0.28, q.z);

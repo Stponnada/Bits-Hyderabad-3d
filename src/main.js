@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { prepareMarineDrive } from './marine-drive-layout.js';
+import { buildMarineDrive } from './marine-drive.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { buildBuildings } from './buildings.js';
 import { makeHeight, buildGround, buildRoads, buildAreas, buildRocks, buildLamps, buildGate, buildBoundaryWall, GATE, fbm } from './world.js';
@@ -177,6 +179,7 @@ async function init() {
   // the mapped guard booths are replaced by the modelled gate
   data.buildings = data.buildings.filter((b) => { const c = centroid(b.outer); return !(b.kind === 'kiosk' && Math.hypot(c[0] - GATE.x, c[1] - GATE.z) < 26); });
   prepareRoundabout(data);
+  prepareMarineDrive(data);
   configureForestZones(data, GATE);
   prepareGroundDetail(data, RB, GATE);
   height = makeHeight(data.boundary);
@@ -192,6 +195,7 @@ async function init() {
   buildLamps(data, scene, env);
   buildGate(data, scene);
   buildRoundabout(scene, env);
+  buildMarineDrive(scene);
   buildBoundaryWall(data, scene, height);
   buildGroundCover(scene, height, data);
 
