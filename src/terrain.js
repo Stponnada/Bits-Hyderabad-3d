@@ -14,16 +14,27 @@ const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a)
 const cr = (p0, p1, p2, p3, t) => p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
 
 export function makeHeight(data, dem) {
-  // ---- the survey: metres relative to the campus centre, lightly blurred (it is noisy at the 1 m level)
+  // ---- the survey, in metres relative to the campus centre. SRTM measures the top of whatever the radar
+  // hit, so every large building shows up as a hill several metres high. Samples on or near a building are
+  // thrown away and the rest is blurred heavily (about 90 m) to recover the lie of the land underneath.
   const { nx, nz, step } = dem;
-  let h = Float32Array.from(dem.h);
+  const boxes = data.buildings.map((b) => ({ bb: bbox(b.outer), pts: b.outer }));
+  const NEAR = 30;
+  let hw = new Float32Array(nx * nz), w = new Float32Array(nx * nz);
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    const x = dem.x0 + i * step, z = dem.z0 + j * step;
+    const built = boxes.some(({ bb, pts }) => x > bb[0] - NEAR && x < bb[2] + NEAR && z > bb[1] - NEAR && z < bb[3] + NEAR && (pip(x, z, pts) || distToPoly(x, z, pts) < NEAR));
+    w[j * nx + i] = built ? 0 : 1; hw[j * nx + i] = built ? 0 : dem.h[j * nx + i];
+  }
+  const blur = (a) => {
+    const t = new Float32Array(a.length);
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) t[j * nx + i] = (a[j * nx + Math.max(0, i - 1)] + 2 * a[j * nx + i] + a[j * nx + Math.min(nx - 1, i + 1)]) / 4;
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) a[j * nx + i] = (t[Math.max(0, j - 1) * nx + i] + 2 * t[j * nx + i] + t[Math.min(nz - 1, j + 1) * nx + i]) / 4;
+  };
+  for (let pass = 0; pass < 18; pass++) { blur(hw); blur(w); }
+  const h = hw.map((v, i) => v / Math.max(w[i], 1e-6));
   const base = h[Math.round(-dem.z0 / step) * nx + Math.round(-dem.x0 / step)];
   for (let i = 0; i < h.length; i++) h[i] -= base;
-  for (let pass = 0; pass < 3; pass++) {
-    const t = new Float32Array(h.length);
-    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) t[j * nx + i] = (h[j * nx + Math.max(0, i - 1)] + 2 * h[j * nx + i] + h[j * nx + Math.min(nx - 1, i + 1)]) / 4;
-    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) h[j * nx + i] = (t[Math.max(0, j - 1) * nx + i] + 2 * t[j * nx + i] + t[Math.min(nz - 1, j + 1) * nx + i]) / 4;
-  }
   const D = (i, j) => h[Math.max(0, Math.min(nz - 1, j)) * nx + Math.max(0, Math.min(nx - 1, i))];
   const dx1 = dem.x0 + (nx - 1) * step, dz1 = dem.z0 + (nz - 1) * step;
   function demAt(x, z) {
@@ -47,7 +58,7 @@ export function makeHeight(data, dem) {
   const gx0 = Math.floor((e[0] - 40) / COARSE) * COARSE, gz0 = Math.floor((e[1] - 40) / COARSE) * COARSE;
   const gnx = Math.round((Math.ceil((e[2] + 40) / COARSE) * COARSE - gx0) / STEP) + 1, gnz = Math.round((Math.ceil((e[3] + 40) / COARSE) * COARSE - gz0) / STEP) + 1;
   const gx1 = gx0 + (gnx - 1) * STEP, gz1 = gz0 + (gnz - 1) * STEP;
-  const F = new Float32Array(gnx * gnz), mask = new Uint8Array(gnx * gnz);
+  const F = new Float32Array(gnx * gnz), mask = new Uint8Array(gnx * gnz), padW = new Float32Array(gnx * gnz);
   for (let j = 0; j < gnz; j++) for (let i = 0; i < gnx; i++) F[j * gnx + i] = demAt(gx0 + i * STEP, gz0 + j * STEP);
   const fine = (x, z) => x >= gx0 && x <= gx1 && z >= gz0 && z <= gz1;
   const bil = (A, x, z) => {
@@ -67,8 +78,9 @@ export function makeHeight(data, dem) {
     cells(bb[0] - r, bb[1] - r, bb[2] + r, bb[3] + r, (k, x, z) => {
       const d = pip(x, z, pts) ? 0 : distToPoly(x, z, pts);
       if (d >= r || (lock && mask[k] && d >= core)) return;   // never tilt a pad that is already level
-      A[k] += (y - A[k]) * (1 - sstep(core, r, d));
-      if (lock && d < core) mask[k] = 1;
+      const wt = 1 - sstep(core, r, d);
+      A[k] += (y - A[k]) * wt;
+      if (lock) { padW[k] = Math.max(padW[k], wt); if (d < core) mask[k] = 1; }
     });
   }
   const meanAt = (pts) => { const c = centroid(pts); let s = demAt(c[0], c[1]); for (const p of pts) s += demAt(p[0], p[1]); return s / (pts.length + 1); };
@@ -84,12 +96,39 @@ export function makeHeight(data, dem) {
     b.y = host ? host.y : fine(bb[0], bb[1]) && fine(bb[2], bb[3]) ? meanAt(b.outer) : Math.min(...b.outer.map((p) => raw(p[0], p[1])));
   }
   for (const b of grounded) if (b.padWith != null && byId.has(b.padWith)) b.y = byId.get(b.padWith).y;
+  // a building within 25 m of a larger one stands on the same terrace: on a slope, separate levels
+  // that close together leave a bank a few metres high across the yard between them
+  {
+    const order = grounded.map((b) => ({ b, bb: bbox(b.outer), area: Math.abs(polyArea(b.outer)) })).sort((p, q) => q.area - p.area);
+    order.forEach((s, i) => {
+      if (s.b.padWith != null) return;
+      for (let k = 0; k < i; k++) {
+        const o = order[k];
+        if (s.bb[0] > o.bb[2] + 25 || s.bb[2] < o.bb[0] - 25 || s.bb[1] > o.bb[3] + 25 || s.bb[3] < o.bb[1] - 25) continue;
+        if (s.b.outer.some((p) => pip(p[0], p[1], o.b.outer) || distToPoly(p[0], p[1], o.b.outer) < 25)) { s.b.y = o.b.y; return; }
+      }
+    });
+  }
   for (const p of data.pads || []) p.y = p.like != null && byId.has(p.like) ? byId.get(p.like).y : demAt(p.at[0], p.at[1]);
   const pads = [...areas.map((a) => [a.pts, a.y]), ...(data.pads || []).map((p) => [p.pts, p.y]), ...grounded.map((b) => [b.outer, b.y])];
-  // a second copy with every pad spread 10 m wider gives the roads their levels: a road running
-  // beside a pitch or a building comes out at that pad's level instead of on a bank above or below it
+  // first pull the land around every pad towards its level over a wide shoulder (where several pads are near,
+  // towards their average), so that roads, car parks and lawns between buildings lie at about floor level
+  // instead of climbing over the natural ground in between. Then cut the exact level pads into that.
+  {
+    const sW = new Float32Array(F.length), sWY = new Float32Array(F.length), mW = new Float32Array(F.length);
+    for (const [pts, y] of pads) {
+      const bb = bbox(pts), core = CORE + 10, r = core + 26;
+      cells(bb[0] - r, bb[1] - r, bb[2] + r, bb[3] + r, (k, x, z) => {
+        const d = pip(x, z, pts) ? 0 : distToPoly(x, z, pts);
+        if (d >= r) return;
+        const wt = 1 - sstep(core, r, d);
+        sW[k] += wt; sWY[k] += wt * y; mW[k] = Math.max(mW[k], wt);
+      });
+    }
+    for (let k = 0; k < F.length; k++) if (sW[k] > 0) F[k] += (sWY[k] / sW[k] - F[k]) * mW[k];
+  }
+  for (const [pts, y] of pads) pad(F, pts, y, CORE, 8, true);
   const Fr = F.slice();
-  for (const [pts, y] of pads) { pad(F, pts, y, CORE, 14, true); pad(Fr, pts, y, CORE + 10, 20, false); }
   // lawns and car parks are draped, but a lawn in a courtyard should report the pad it lies on
   for (const a of data.areas) { const c = centroid(a.pts); a.y = fine(c[0], c[1]) ? bil(F, c[0], c[1]) : raw(c[0], c[1]); }
 
@@ -124,7 +163,8 @@ export function makeHeight(data, dem) {
         });
       }
     }
-    for (let k = 0; k < F.length; k++) if (sw[k] > 0 && !mask[k]) F[k] += (swh[k] / sw[k] - F[k]) * wMax[k];
+    // a road gives way to a pad as it nears one, so the two meet on the pad's smooth shoulder instead of a step
+    for (let k = 0; k < F.length; k++) if (sw[k] > 0) F[k] += (swh[k] / sw[k] - F[k]) * wMax[k] * (1 - padW[k]);
   }
   // ---- the rim follows the coarse mesh around it, so the two ground meshes meet without cracks
   {
