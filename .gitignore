@@ -1,0 +1,6 @@
+node_modules
+dist
+shots
+data/tiles
+data/ref
+data/*.jpg
