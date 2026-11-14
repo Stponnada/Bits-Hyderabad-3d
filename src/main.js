@@ -1,9 +1,10 @@
+import { prepareGroundDetail, buildGroundCover, updateGroundCover } from './ground-detail.js';
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { buildBuildings } from './buildings.js';
 import { makeHeight, buildGround, buildRoads, buildAreas, buildRocks, buildLamps, buildGate, buildBoundaryWall, GATE, fbm } from './world.js';
 import { buildTrees, updatePlantLOD, foliageGlow } from './plants.js';
-import { prepareRoundabout, buildRoundabout } from './roundabout.js';
+import { prepareRoundabout, buildRoundabout, RB } from './roundabout.js';
 import { textSprite, canvasTex } from './textures.js';
 import { pip, centroid } from './geo.js';
 import { createContactShading } from './contact-shading.js';
@@ -159,6 +160,7 @@ async function init() {
   // the mapped guard booths are replaced by the modelled gate
   data.buildings = data.buildings.filter((b) => { const c = centroid(b.outer); return !(b.kind === 'kiosk' && Math.hypot(c[0] - GATE.x, c[1] - GATE.z) < 26); });
   prepareRoundabout(data);
+  prepareGroundDetail(data, RB, GATE);
   height = makeHeight(data.boundary);
   buildGround(data, scene, height);
   buildRoads(data, scene, height);
@@ -172,6 +174,7 @@ async function init() {
   buildGate(data, scene);
   buildRoundabout(scene, env);
   buildBoundaryWall(data, scene, height);
+  buildGroundCover(scene, height, data);
 
   // labels
   const all = [...B.labels, ...data.labels.map((l) => ({ name: l.name, at: [l.at[0], 26, l.at[1]], major: true })), ...A.places.map((p) => ({ ...p, major: false })),
@@ -394,6 +397,7 @@ function frame(now) {
   sky.position.copy(camera.position); stars.position.copy(camera.position);
   clouds.position.set(camera.position.x, 2400, camera.position.z); clouds.rotation.y = now * 0.000004;
   updatePlantLOD(camera.position, now);
+  updateGroundCover(camera.position, now);
   contactShading.render();
   drawMap(); hud(now);
 }

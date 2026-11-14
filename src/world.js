@@ -1,3 +1,4 @@
+import { groundMaterial } from './ground-detail.js';
 import { surfaceMaterial } from './surfaces.js';
 import * as THREE from 'three';
 import { Geo, polyArea, centroid, pip, bbox, distToPoly, addFlatPoly, addRibbon } from './geo.js';
@@ -68,6 +69,7 @@ export function buildGround(data, scene, height) {
       c *= mix(1.0, 0.62 + 0.8 * d1.r, nearF) * (0.82 + 0.36 * d2.g);
       diffuseColor.rgb = c;`);
   };
+  groundMaterial(mat, true);
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   scene.add(mesh);
@@ -184,7 +186,7 @@ export function buildAreas(data, scene, env) {
   const F = (key, mat) => { if (!flat[key]) flat[key] = { geo: new Geo(), mat }; return flat[key].geo; };
   const std = (tex, o = {}) => new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, ...o });
   const mats = {
-    lawn: std(grassTex()),
+    lawn: groundMaterial(std(grassTex())),
     asphalt: surfaceMaterial('asphalt', '#64625c', { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
     concrete: surfaceMaterial('concrete', '#bdb9ae', { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
     paver: surfaceMaterial('pavers', '#b6a18a', { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),

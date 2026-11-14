@@ -1,3 +1,4 @@
+import { addTreeGroundDetail } from './ground-detail.js';
 import * as THREE from 'three';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rng, canvasTex } from './textures.js';
@@ -298,6 +299,7 @@ export function buildTrees(data, scene, height) {
   }
   const companions = new URLSearchParams(location.search).get('trees') === 'original'
     ? [] : createCompanionTrees(data, list, noTreeZones);
+  addTreeGroundDetail([...list, ...companions]);
   buildDetailedTrees(companions, scene, height);
   group.userData.population = { original: list.length, added: companions.length };
   group.name = 'Original trees';
