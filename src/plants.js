@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rng, canvasTex } from './textures.js';
-import { pip, distToPoly } from './geo.js';
+import { buildDetailedTrees, updateDetailedTrees } from './detailed-trees.js';
+import { createOriginalTrees, createCompanionTrees } from './tree-population.js';
 
 // shared uniform: fake light transmission through foliage (set per time of day)
 export const foliageGlow = { value: 0.16 };
@@ -245,58 +246,21 @@ export const noTreeZones = [];       // [x, z, radius]
 
 const SHELL_RANGE = 330;
 const shellMeshes = [];
-export function updatePlantLOD(cam) {
+const originalMeshes = [];
+export function updatePlantLOD(cam, now, visibleRange = Infinity) {
+  updateDetailedTrees(cam, now, visibleRange);
+  for (const m of originalMeshes) m.visible = cam.distanceTo(m.boundingSphere.center) - m.boundingSphere.radius < visibleRange;
   for (const m of shellMeshes) {
     const c = m.userData.c;
-    m.visible = cam.y < 220 && Math.hypot(c[0] - cam.x, c[1] - cam.z) < SHELL_RANGE;
+    m.visible = cam.y < 220 && Math.hypot(c[0] - cam.x, c[1] - cam.z) < SHELL_RANGE
+      && cam.distanceTo(m.boundingSphere.center) - m.boundingSphere.radius < visibleRange;
   }
 }
 
 export function buildTrees(data, scene, height) {
   const G = plantGeometries();
   const mats = plantMaterials();
-  const r = rng(5);
-  const KIND = ['broad', 'tall', 'scrub'];
-  const list = [];
-  for (const t of data.trees) {
-    if (noTreeZones.some((z) => Math.hypot(t[0] - z[0], t[1] - z[1]) < z[2])) continue;
-    let kind = KIND[t[3]];
-    const inside = pip(t[0], t[1], data.boundary);
-    if (kind === 'broad' && !inside && distToPoly(t[0], t[1], data.boundary) > 60) kind = 'far';
-    if (inside && kind === 'tall' && r() < 0.18) kind = 'conifer';
-    list.push({ x: t[0], z: t[1], s: t[2] * (0.72 + r() * 0.3), kind });
-  }
-  // royal palms along Marine Drive (the sweep from the gate roundabout to the academic block)
-  for (const road of data.roads) {
-    if (road.kind === 'foot' || road.kind === 'path' || road.kind === 'track' || road.closed) continue;
-    const mid = road.pts[road.pts.length >> 1];
-    if (!(mid[0] > -150 && mid[0] < 70 && mid[1] > -400 && mid[1] < -20)) continue;
-    let acc = 8;
-    for (let i = 0; i < road.pts.length - 1; i++) {
-      const a = road.pts[i], b = road.pts[i + 1];
-      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      if (len < 0.01) continue;
-      const nx = -(b[1] - a[1]) / len, nz = (b[0] - a[0]) / len;
-      while (acc < len) {
-        const t = acc / len, x = a[0] + (b[0] - a[0]) * t, z = a[1] + (b[1] - a[1]) * t;
-        for (const s of [-1, 1]) {
-          const px = x + nx * s * 6.4, pz = z + nz * s * 6.4;
-          if (!noTreeZones.some((q) => Math.hypot(px - q[0], pz - q[1]) < q[2] + 12)) list.push({ x: px, z: pz, s: 0.85 + r() * 0.3, kind: 'palm' });
-        }
-        acc += 24;
-      }
-      acc -= len;
-    }
-  }
-  for (const p of extraPlants) list.push(p);
-  // sparse scrub beyond the surveyed extent
-  for (let i = 0; i < 5000; i++) {
-    const a = r() * Math.PI * 2, d = 1000 + r() * 2200;
-    const x = Math.cos(a) * d, z = Math.sin(a) * d;
-    const e = data.extent;
-    if (x > e[0] && x < e[2] && z > e[1] && z < e[3]) continue;
-    list.push({ x, z, s: 0.8 + r() * 0.8, kind: r() < 0.6 ? 'scrub' : 'far' });
-  }
+  const { trees: list, random: r } = createOriginalTrees(data, noTreeZones, extraPlants);
   const CH = 240;
   const buckets = new Map();
   for (const t of list) {
@@ -319,15 +283,24 @@ export function buildTrees(data, scene, height) {
       const v = 0.82 + r() * 0.34;
       cols.push(t.tint ? new THREE.Color(t.tint) : new THREE.Color().setRGB(v * (0.92 + r() * 0.18), v, v * (0.85 + r() * 0.2)));
     });
+    // Keep the complete seeded transform stream stable for the original trees.
+    const remaining = arr.map((_, i) => i);
+    if (!remaining.length) continue;
     for (const part of Object.keys(G[kind])) {
-      const im = new THREE.InstancedMesh(G[kind][part], mats[part], arr.length);
-      mx.forEach((m, i) => { im.setMatrixAt(i, m); im.setColorAt(i, part === 'bark' ? col.set('#ffffff') : cols[i]); });
+      const im = new THREE.InstancedMesh(G[kind][part], mats[part], remaining.length);
+      remaining.forEach((source, i) => { im.setMatrixAt(i, mx[source]); im.setColorAt(i, part === 'bark' ? col.set('#ffffff') : cols[source]); });
       im.castShadow = part !== 'shell'; im.receiveShadow = false;
       im.computeBoundingSphere();
+      if (part !== 'shell') originalMeshes.push(im);
       if (part === 'shell') { im.userData.c = [(+cx + 0.5) * CH, (+cz + 0.5) * CH]; shellMeshes.push(im); }
       group.add(im);
     }
   }
+  const companions = new URLSearchParams(location.search).get('trees') === 'original'
+    ? [] : createCompanionTrees(data, list, noTreeZones);
+  buildDetailedTrees(companions, scene, height);
+  group.userData.population = { original: list.length, added: companions.length };
+  group.name = 'Original trees';
   scene.add(group);
-  return { group, count: list.length };
+  return { group, count: list.length + companions.length, original: list.length, added: companions.length };
 }

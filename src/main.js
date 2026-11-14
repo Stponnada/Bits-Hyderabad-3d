@@ -132,6 +132,7 @@ const PLACES = [
 
 const player = { yaw: 0, pitch: 0, mode: 'fly', vel: new THREE.Vector3() };
 let height = () => 0, footprints = [], labelSprites = [], named = [], data = null;
+let treePopulation = null;
 
 function goTo(p) {
   const [, tx, tz, bearing, dist, h] = p;
@@ -160,6 +161,7 @@ async function init() {
   footprints = B.footprints; nightMats = B.nightMats;
   const A = buildAreas(data, scene, env);
   const trees = buildTrees(data, scene, height);
+  treePopulation = { original: trees.original, added: trees.added, total: trees.count };
   buildRocks(data, scene, height);
   buildLamps(data, scene, env);
   buildGate(data, scene);
@@ -380,7 +382,7 @@ function frame(now) {
   sun.position.copy(sun.target.position).addScaledVector(sunDir, 1100);
   sky.position.copy(camera.position); stars.position.copy(camera.position);
   clouds.position.set(camera.position.x, 2400, camera.position.z); clouds.rotation.y = now * 0.000004;
-  updatePlantLOD(camera.position);
+  updatePlantLOD(camera.position, now);
   renderer.render(scene, camera);
   drawMap(); hud(now);
 }
@@ -390,5 +392,5 @@ addEventListener('resize', () => {
 });
 window.__go = (x, y, z, yaw, pitch) => { camera.position.set(x, y, z); player.yaw = THREE.MathUtils.degToRad(yaw); player.pitch = THREE.MathUtils.degToRad(pitch); };
 window.__time = applyTime;
-window.__info = () => ({ tris: renderer.info.render.triangles, calls: renderer.info.render.calls });
+window.__info = () => ({ tris: renderer.info.render.triangles, calls: renderer.info.render.calls, trees: treePopulation });
 init().catch((e) => { console.error(e); $('loading').textContent = 'Failed to load: ' + e.message; });

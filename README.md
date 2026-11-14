@@ -34,6 +34,12 @@ Click the minimap to teleport, or use the "Jump to" list. A view can be linked d
   arrays and tanks, the library's stepped roof and glass front, and hipped metal roofs.
 - `src/world.js` builds terrain, roads with kerbs, sports grounds, water, trees, boulders,
   street lamps, the main gate and the boundary wall.
+- `src/tree-population.js` preserves the original 25,558 trees and places one additional
+  tree near each, keeping new trunks off roads, buildings, water and sports grounds.
+  `src/detailed-trees.js` renders these additions with branching foliage, wind and three
+  levels of detail. The default total is 51,116 trees; `?trees=original` shows the original
+  population for comparison. Run `node --test tools/tree-population.test.mjs` to verify
+  the population and placement constraints.
 - `src/main.js` handles sky, lighting, time of day, movement, the minimap and labels.
 
 Map data (c) OpenStreetMap contributors, ODbL. Land cover was derived from Esri World Imagery,
