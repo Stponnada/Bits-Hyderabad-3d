@@ -1,3 +1,4 @@
+import { groundMaterial } from './ground-detail.js';
 import { surfaceMaterial } from './surfaces.js';
 import * as THREE from 'three';
 import { Geo, addFlatPoly } from './geo.js';
@@ -63,7 +64,7 @@ export function buildRoundabout(scene, env) {
   const lawn = new Geo();
   const disc = []; for (let i = 0; i < 48; i++) disc.push([RB.x + Math.cos((i / 48) * 6.2832) * (rIn - 3.0), RB.z + Math.sin((i / 48) * 6.2832) * (rIn - 3.0)]);
   addFlatPoly(lawn, disc, [], 0.06, 1 / 5);
-  const lm = new THREE.Mesh(lawn.build(), new THREE.MeshStandardMaterial({ map: grassTex(), roughness: 1, ...poly })); lm.receiveShadow = true; g.add(lm);
+  const lm = new THREE.Mesh(lawn.build(), groundMaterial(new THREE.MeshStandardMaterial({ map: grassTex(), roughness: 1, ...poly }))); lm.receiveShadow = true; g.add(lm);
 
   // hedges: bright duranta border with gaps, darker clipped hedge behind it
   const hg = new Geo();
