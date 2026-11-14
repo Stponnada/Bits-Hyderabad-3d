@@ -1,6 +1,8 @@
+import { marineReserved } from './marine-drive-layout.js';
 import * as THREE from 'three';
 import { bbox, pip, distToPoly } from './geo.js';
 import { noiseTex, rng } from './textures.js';
+import { forestGroundCover } from './forest-zone.js';
 
 let field = null;
 const grassCells = [];
@@ -131,6 +133,7 @@ export function buildGroundCover(scene, height, data) {
   for (let x = bounds[0]; x < bounds[2]; x += 0.75) for (let z = bounds[1]; z < bounds[3]; z += 0.75) {
     if (random() > 0.75) continue;
     const px = x + random() * 0.7, pz = z + random() * 0.7;
+    if (forestGroundCover(px, pz) > 0.15 || marineReserved(px, pz)) continue;
     if (!pip(px, pz, data.boundary)) continue;
     const rb = field.roundabout, radius = Math.hypot(px - rb.x, pz - rb.z);
     if (radius > 25 && radius < 35) continue;

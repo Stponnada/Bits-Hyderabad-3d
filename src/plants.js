@@ -1,4 +1,5 @@
 import { addTreeGroundDetail } from './ground-detail.js';
+import { isForestTree } from './forest-zone.js';
 import * as THREE from 'three';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rng, canvasTex } from './textures.js';
@@ -259,6 +260,7 @@ export function updatePlantLOD(cam, now, visibleRange = Infinity) {
 }
 
 export function buildTrees(data, scene, height) {
+  const forestEnabled = new URLSearchParams(location.search).get('trees') !== 'original';
   const G = plantGeometries();
   const mats = plantMaterials();
   const { trees: list, random: r } = createOriginalTrees(data, noTreeZones, extraPlants);
@@ -284,8 +286,9 @@ export function buildTrees(data, scene, height) {
       const v = 0.82 + r() * 0.34;
       cols.push(t.tint ? new THREE.Color(t.tint) : new THREE.Color().setRGB(v * (0.92 + r() * 0.18), v, v * (0.85 + r() * 0.2)));
     });
-    // Keep the complete seeded transform stream stable for the original trees.
-    const remaining = arr.map((_, i) => i);
+    // Keep the complete seeded transform stream stable; only the bounded
+    // woodland trial uses a different canopy renderer for the same trees.
+    const remaining = arr.map((t, i) => forestEnabled && isForestTree(t) ? -1 : i).filter((i) => i >= 0);
     if (!remaining.length) continue;
     for (const part of Object.keys(G[kind])) {
       const im = new THREE.InstancedMesh(G[kind][part], mats[part], remaining.length);
@@ -300,9 +303,11 @@ export function buildTrees(data, scene, height) {
   const companions = new URLSearchParams(location.search).get('trees') === 'original'
     ? [] : createCompanionTrees(data, list, noTreeZones);
   addTreeGroundDetail([...list, ...companions]);
-  buildDetailedTrees(companions, scene, height);
+  const forestTrees = companions.filter(isForestTree);
+  buildDetailedTrees(companions.filter((t) => !isForestTree(t)), scene, height);
   group.userData.population = { original: list.length, added: companions.length };
   group.name = 'Original trees';
   scene.add(group);
-  return { group, count: list.length + companions.length, original: list.length, added: companions.length };
+  return { group, count: list.length + companions.length, original: list.length, added: companions.length,
+    forestTrees, forestOriginals: list.filter(isForestTree) };
 }
