@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Geo, polyArea, centroid, pip, bbox, distToPoly, addFlatPoly, addRibbon } from './geo.js';
+import { drapeGeo } from './terrain.js';
 import { rng, noiseTex, roadTex, kerbTex, paverTex, plainTex, grassTex, courtTex, signTex, canvasTex } from './textures.js';
 
 // ------------------------------------------------------------------ terrain
@@ -17,28 +18,25 @@ export function fbm(x, z) {
   return vnoise(x, z) * 0.55 + vnoise(x * 2.1 + 5, z * 2.1 + 9) * 0.28 + vnoise(x * 4.3 + 11, z * 4.3 + 3) * 0.17;
 }
 
-export function makeHeight(boundary) {
-  const bb = bbox(boundary);
-  return function height(x, z) {
-    let d;
-    if (x > bb[0] && x < bb[2] && z > bb[1] && z < bb[3] && pip(x, z, boundary)) return 0;
-    d = distToPoly(x, z, boundary);
-    if (d < 160) return 0;
-    const s = Math.min(1, (d - 160) / 700);
-    const k = s * s * (3 - 2 * s);
-    const hills = fbm(x / 800, z / 800) * 46 + fbm(x / 230 + 7, z / 230 + 2) * 9 - 12;
-    const far = Math.max(0, (Math.hypot(x, z) - 2200) / 1500);
-    return k * Math.max(-2, hills) + far * far * 60 * fbm(x / 600 + 3, z / 600);
-  };
-}
-
 export function buildGround(data, scene, height) {
-  const size = 9000, seg = 300;
-  const geo = new THREE.PlaneGeometry(size, size, seg, seg);
-  geo.rotateX(-Math.PI / 2);
-  const pos = geo.attributes.position;
-  for (let i = 0; i < pos.count; i++) pos.setY(i, height(pos.getX(i), pos.getZ(i)));
-  geo.computeVertexNormals();
+  // two meshes: the terrain's own 4 m grid over the mapped extent, and a coarse one for the country around it
+  const T = height.grid, C = 32, N = 141;
+  const tx1 = T.x0 + (T.nx - 1) * T.step, tz1 = T.z0 + (T.nz - 1) * T.step;
+  const grid = (x0, z0, nx, nz, step, keep) => {
+    const pos = new Float32Array(nx * nz * 3), idx = new Uint32Array((nx - 1) * (nz - 1) * 6);
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) { const x = x0 + i * step, z = z0 + j * step, k = (j * nx + i) * 3; pos[k] = x; pos[k + 1] = height(x, z); pos[k + 2] = z; }
+    let n = 0;
+    for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
+      if (keep && !keep(x0 + (i + 0.5) * step, z0 + (j + 0.5) * step)) continue;
+      const a = j * nx + i, b = a + 1, c = a + nx + 1, d = a + nx;
+      idx[n++] = a; idx[n++] = d; idx[n++] = c; idx[n++] = a; idx[n++] = c; idx[n++] = b;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setIndex(new THREE.BufferAttribute(idx.subarray(0, n), 1));
+    g.computeVertexNormals();
+    return g;
+  };
+  const geos = [grid(T.x0, T.z0, T.nx, T.nz, T.step), grid(-N * C, -N * C, 2 * N + 1, 2 * N + 1, C, (x, z) => !(x > T.x0 && x < tx1 && z > T.z0 && z < tz1))];
   const ground = new THREE.TextureLoader().load('ground.jpg');
   ground.colorSpace = THREE.SRGBColorSpace; ground.anisotropy = 8;
   const detail = noiseTex(512, 4);
@@ -67,36 +65,37 @@ export function buildGround(data, scene, height) {
       c *= mix(1.0, 0.62 + 0.8 * d1.r, nearF) * (0.82 + 0.36 * d2.g);
       diffuseColor.rgb = c;`);
   };
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.receiveShadow = true;
-  scene.add(mesh);
-  return mesh;
+  const group = new THREE.Group();
+  for (const g of geos) { const mesh = new THREE.Mesh(g, mat); mesh.receiveShadow = true; group.add(mesh); }
+  scene.add(group);
+  return group;
 }
 
 // -------------------------------------------------------------------- roads
 export function buildRoads(data, scene, height) {
   const layers = {
-    kerb: { geo: new Geo(), y: 0.035, mat: new THREE.MeshStandardMaterial({ map: paverTex('#b0624c'), roughness: 0.95 }) },
-    foot: { geo: new Geo(), y: 0.05, mat: new THREE.MeshStandardMaterial({ map: paverTex('#b98f72'), roughness: 0.95 }) },
+    kerb: { geo: new Geo(), y: 0.04, mat: new THREE.MeshStandardMaterial({ map: paverTex('#b0624c'), roughness: 0.95 }) },
+    foot: { geo: new Geo(), y: 0.07, mat: new THREE.MeshStandardMaterial({ map: paverTex('#b98f72'), roughness: 0.95 }) },
     path: { geo: new Geo(), y: 0.03, mat: new THREE.MeshStandardMaterial({ map: plainTex('#a98a63', 51, 0.1), roughness: 1 }) },
-    main: { geo: new Geo(), y: 0.085, mat: new THREE.MeshStandardMaterial({ map: roadTex('asphalt'), roughness: 0.92 }) },
-    service: { geo: new Geo(), y: 0.07, mat: new THREE.MeshStandardMaterial({ map: roadTex('asphalt'), roughness: 0.92 }) },
+    main: { geo: new Geo(), y: 0.13, mat: new THREE.MeshStandardMaterial({ map: roadTex('asphalt'), roughness: 0.92 }) },
+    service: { geo: new Geo(), y: 0.1, mat: new THREE.MeshStandardMaterial({ map: roadTex('asphalt'), roughness: 0.92 }) },
   };
-  const yf = (off) => (x, z) => { const h = height(x, z); return h + off + (h > 0.01 ? 0.35 : 0); };
+  // every ribbon is laid out flat, then draped onto the ground mesh at its layer's height
+  const lay = (L, pts, w, o) => { const flat = new Geo(); addRibbon(flat, pts, w, () => 0, o); drapeGeo(L.geo, flat, height, L.y); };
   const inside = (p) => pip(p[0], p[1], data.boundary);
   const carriage = [];          // campus carriageways that get raised kerbs
   for (const r of data.roads) {
     const opt = { closed: r.closed, vScale: 1 / 8 };
     const pts = r.closed ? r.pts.slice(0, -1) : r.pts;
     if (pts.length < 2 || r.hidden) continue;
-    if (r.kind === 'foot') addRibbon(layers.foot.geo, pts, r.w, yf(layers.foot.y), { ...opt, vScale: 1 / 1.6, uRep: r.w / 1.6 });
-    else if (r.kind === 'path' || r.kind === 'track') addRibbon(layers.path.geo, pts, r.w, yf(layers.path.y), { ...opt, vScale: 1 / 6 });
+    if (r.kind === 'foot') lay(layers.foot, pts, r.w, { ...opt, vScale: 1 / 1.6, uRep: r.w / 1.6 });
+    else if (r.kind === 'path' || r.kind === 'track') lay(layers.path, pts, r.w, { ...opt, vScale: 1 / 6 });
     else {
       const w = r.kind === 'service' ? 5.6 : r.w;
       const mid = pts[pts.length >> 1];
-      if (!inside(mid) && r.kind !== 'main' && Math.hypot(mid[0] - GATE.x, mid[1] - GATE.z) > 90 && distToPoly(mid[0], mid[1], data.boundary) > 40) { addRibbon(layers.path.geo, pts, 4, yf(layers.path.y), { ...opt, vScale: 1 / 6 }); continue; }
-      if (inside(mid)) { addRibbon(layers.kerb.geo, pts, w + 4.4, yf(layers.kerb.y), { ...opt, vScale: 1 / 1.6, uRep: (w + 4.4) / 1.6 }); carriage.push({ pts: r.pts, hw: w / 2 }); }
-      addRibbon((r.kind === 'service' ? layers.service : layers.main).geo, pts, w, yf(r.kind === 'service' ? layers.service.y : layers.main.y), opt);
+      if (!inside(mid) && r.kind !== 'main' && Math.hypot(mid[0] - GATE.x, mid[1] - GATE.z) > 90 && distToPoly(mid[0], mid[1], data.boundary) > 40) { lay(layers.path, pts, 4, { ...opt, vScale: 1 / 6 }); continue; }
+      if (inside(mid)) { lay(layers.kerb, pts, w + 4.4, { ...opt, vScale: 1 / 1.6, uRep: (w + 4.4) / 1.6 }); carriage.push({ pts: r.pts, hw: w / 2 }); }
+      lay(r.kind === 'service' ? layers.service : layers.main, pts, w, opt);
     }
   }
   const group = new THREE.Group();
@@ -133,7 +132,7 @@ export function buildRoads(data, scene, height) {
     return Math.hypot(x - GATE.x, z - GATE.z) < 17;
   };
   const kg = new Geo();
-  const KH = 0.17, KW = 0.3, STEP = 1.2;
+  const KH = 0.27, KW = 0.3, STEP = 1.2;
   carriage.forEach((c, id) => {
     for (const side of [-1, 1]) {
       let prev = null, dist = 0;
@@ -145,12 +144,12 @@ export function buildRoads(data, scene, height) {
         for (let j = 0; j <= n; j++) {
           const x = a[0] + tx * (len * j) / n, z = a[1] + tz * (len * j) / n;
           const ix = x + nx * (c.hw + 0.02), iz = z + nz * (c.hw + 0.02), ox = x + nx * (c.hw + 0.02 + KW), oz = z + nz * (c.hw + 0.02 + KW);
-          const cur = blockedBy((ix + ox) / 2, (iz + oz) / 2, id) ? null : { ix, iz, ox, oz, nx, nz };
+          const cur = blockedBy((ix + ox) / 2, (iz + oz) / 2, id) ? null : { ix, iz, ox, oz, nx, nz, y: height((ix + ox) / 2, (iz + oz) / 2) };
           if (cur && prev && (j > 0 || Math.hypot(cur.ix - prev.ix, cur.iz - prev.iz) < 1.5)) {
             const seg = Math.hypot(cur.ix - prev.ix, cur.iz - prev.iz); if (seg > 0.01) {
               const v0 = dist / 2, v1 = (dist + seg) / 2; dist += seg;
-              const A = [prev.ix, 0.06, prev.iz], B = [cur.ix, 0.06, cur.iz], At = [prev.ix, KH, prev.iz], Bt = [cur.ix, KH, cur.iz];
-              const Ao = [prev.ox, KH, prev.oz], Bo = [cur.ox, KH, cur.oz], Ag = [prev.ox, 0.03, prev.oz], Bg = [cur.ox, 0.03, cur.oz];
+              const A = [prev.ix, prev.y + 0.06, prev.iz], B = [cur.ix, cur.y + 0.06, cur.iz], At = [prev.ix, prev.y + KH, prev.iz], Bt = [cur.ix, cur.y + KH, cur.iz];
+              const Ao = [prev.ox, prev.y + KH, prev.oz], Bo = [cur.ox, cur.y + KH, cur.oz], Ag = [prev.ox, prev.y + 0.03, prev.oz], Bg = [cur.ox, cur.y + 0.03, cur.oz];
               kg.quad(A, At, Bt, B, [-cur.nx, 0, -cur.nz], [0.1, v0], [0.3, v0], [0.3, v1], [0.1, v1]);
               kg.quad(At, Ao, Bo, Bt, [0, 1, 0], [0.3, v0], [0.7, v0], [0.7, v1], [0.3, v1]);
               kg.quad(Ao, Ag, Bg, Bo, [cur.nx, 0, cur.nz], [0.7, v0], [0.9, v0], [0.9, v1], [0.7, v1]);
@@ -177,10 +176,11 @@ function orientedRect(pts) {
   return { c, ang: Math.atan2(long[1], long[0]), len: Math.max(l1, l2), wid: Math.min(l1, l2) };
 }
 
-export function buildAreas(data, scene, env) {
+export function buildAreas(data, scene, env, height) {   // areas carry their ground level in a.y (see terrain.js)
   const group = new THREE.Group();
   const flat = {};
-  const F = (key, mat) => { if (!flat[key]) flat[key] = { geo: new Geo(), mat }; return flat[key].geo; };
+  let y0 = 0;                        // ground level of the area being built
+  const F = (key, mat) => { if (!flat[key]) flat[key] = { geo: new Geo(), mat }; flat[key].geo.yo = y0; return flat[key].geo; };
   const std = (tex, o = {}) => new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, ...o });
   const mats = {
     lawn: std(grassTex()),
@@ -193,6 +193,8 @@ export function buildAreas(data, scene, env) {
   };
   const water = new THREE.MeshStandardMaterial({ color: '#3d6a6b', roughness: 0.08, metalness: 0.5, transparent: true, opacity: 0.92, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
   const poolWater = new THREE.MeshStandardMaterial({ color: '#2fa6c9', roughness: 0.05, metalness: 0.3, emissive: '#0a3a4a', emissiveIntensity: 0.4, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 });
+  // lawns, car parks and paving follow the ground instead of sitting on a level pad
+  const drape = (key, mat, pts, off, uv) => { const flatG = new Geo(); addFlatPoly(flatG, pts, [], 0, uv); const g = F(key, mat); g.yo = 0; drapeGeo(g, flatG, height, off); };
   const solid = new Geo();           // raised concrete things
   const places = [];
   const posts = [];                  // goal posts & masts: {x,z,h,r}
@@ -200,27 +202,28 @@ export function buildAreas(data, scene, env) {
 
   for (const a of data.areas) {
     if (a.hidden) continue;
+    y0 = a.y ?? 0; solid.yo = y0;
     const pts = a.pts;
     const c = centroid(pts);
-    if (a.name) places.push({ name: a.name, at: [c[0], 10, c[1]] });
+    if (a.name) places.push({ name: a.name, at: [c[0], y0 + 10, c[1]] });
     switch (a.kind) {
-      case 'grass': addFlatPoly(F('lawn', mats.lawn), pts, [], 0.02, 1 / 6); break;
-      case 'parking': addFlatPoly(F('asphalt', mats.asphalt), pts, [], 0.04, 1 / 6); break;
-      case 'plaza': addFlatPoly(F('paver', mats.paver), pts, [], 0.04, 1 / 3); break;
+      case 'grass': drape('lawnD', mats.lawn, pts, 0.02, 1 / 6); break;
+      case 'parking': drape('asphaltD', mats.asphalt, pts, 0.03, 1 / 6); break;
+      case 'plaza': drape('paverD', mats.paver, pts, 0.03, 1 / 3); break;
       case 'pooldeck': addFlatPoly(F('concrete', mats.concrete), pts, [], 0.05, 1 / 6); break;
       case 'track': addFlatPoly(F('clay', mats.clay), pts, a.holes || [], 0.03, 1 / 6); break;
       case 'water': {
-        const g = new Geo(); addFlatPoly(g, pts, [], 0.06, 1 / 8);
+        const g = new Geo(); g.yo = y0; addFlatPoly(g, pts, [], 0.06, 1 / 8);
         const m = new THREE.Mesh(g.build(), water); m.receiveShadow = true; group.add(m);
         // stone rim
-        const rim = new Geo(); addRibbon(rim, pts, 0.9, () => 0.12, { closed: true, vScale: 1 / 2 });
+        const rim = new Geo(); addRibbon(rim, pts, 0.9, () => y0 + 0.12, { closed: true, vScale: 1 / 2 });
         group.add(new THREE.Mesh(rim.build(), mats.concrete));
         break;
       }
       case 'pool': {
-        const g = new Geo(); addFlatPoly(g, pts, [], 0.2, 1 / 8);
+        const g = new Geo(); g.yo = y0; addFlatPoly(g, pts, [], 0.2, 1 / 8);
         const pm = new THREE.Mesh(g.build(), poolWater); pm.renderOrder = 6; group.add(pm);
-        const rim = new Geo(); addRibbon(rim, pts, 1.2, () => 0.24, { closed: true, vScale: 1 / 2 });
+        const rim = new Geo(); addRibbon(rim, pts, 1.2, () => y0 + 0.24, { closed: true, vScale: 1 / 2 });
         group.add(new THREE.Mesh(rim.build(), mats.concrete));
         break;
       }
@@ -254,11 +257,11 @@ export function buildAreas(data, scene, env) {
       case 'fountain': {
         const r = Math.max(3, Math.sqrt(Math.abs(polyArea(pts)) / Math.PI));
         const basin = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.05, 0.7, 28), mats.concrete);
-        basin.position.set(c[0], 0.35, c[1]); basin.castShadow = true; group.add(basin);
-        const w = new THREE.Mesh(new THREE.CircleGeometry(r * 0.9, 28), poolWater); w.rotation.x = -Math.PI / 2; w.position.set(c[0], 0.72, c[1]); group.add(w);
-        const tier = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.35, r * 0.2, 1.6, 16), mats.concrete); tier.position.set(c[0], 1.2, c[1]); group.add(tier);
+        basin.position.set(c[0], y0 + 0.35, c[1]); basin.castShadow = true; group.add(basin);
+        const w = new THREE.Mesh(new THREE.CircleGeometry(r * 0.9, 28), poolWater); w.rotation.x = -Math.PI / 2; w.position.set(c[0], y0 + 0.72, c[1]); group.add(w);
+        const tier = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.35, r * 0.2, 1.6, 16), mats.concrete); tier.position.set(c[0], y0 + 1.2, c[1]); group.add(tier);
         const jet = new THREE.Mesh(new THREE.ConeGeometry(0.35, 3.2, 8), new THREE.MeshBasicMaterial({ color: '#dff3ff', transparent: true, opacity: 0.55 }));
-        jet.position.set(c[0], 3.4, c[1]); group.add(jet);
+        jet.position.set(c[0], y0 + 3.4, c[1]); group.add(jet);
         break;
       }
       case 'substation': {
@@ -272,13 +275,13 @@ export function buildAreas(data, scene, env) {
         solid.box(o.c[0], o.c[1], o.len, 0.15, 0, 2.5, o.ang);
         break;
       }
-      case 'nets': addFlatPoly(F('lawn', mats.lawn), pts, [], 0.03, 1 / 6); break;
+      case 'nets': drape('lawnD', mats.lawn, pts, 0.025, 1 / 6); break;
       case 'pitch': {
         const sport = a.sport || 'soccer';
         if (sport.startsWith('cricket')) {
           addFlatPoly(F('cricket', mats.cricket), pts, [], 0.03, 1 / 9);
           const strip = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 22), std(plainTex('#c9b98c', 66, 0.06)));
-          strip.rotation.x = -Math.PI / 2; strip.rotation.z = 0.4; strip.position.set(c[0], 0.06, c[1]); group.add(strip);
+          strip.rotation.x = -Math.PI / 2; strip.rotation.z = 0.4; strip.position.set(c[0], y0 + 0.06, c[1]); group.add(strip);
           break;
         }
         if (pts.length !== 4) { addFlatPoly(F('lawn', mats.lawn), pts, [], 0.03, 1 / 6); break; }
@@ -286,17 +289,17 @@ export function buildAreas(data, scene, env) {
         const m = new THREE.Mesh(new THREE.PlaneGeometry(o.wid, o.len), std(courtTex(sport, a.name || ''), { polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
         m.rotation.order = 'YXZ';
         m.rotation.y = -o.ang + Math.PI / 2; m.rotation.x = -Math.PI / 2;
-        m.position.set(o.c[0], 0.045, o.c[1]); m.receiveShadow = true; group.add(m);
+        m.position.set(o.c[0], y0 + 0.045, o.c[1]); m.receiveShadow = true; group.add(m);
         const ax = [Math.cos(o.ang), Math.sin(o.ang)];
         if (sport.startsWith('soccer') && o.len > 60) {
-          for (const s of [-1, 1]) posts.push({ x: o.c[0] + ax[0] * s * (o.len / 2 - 3), z: o.c[1] + ax[1] * s * (o.len / 2 - 3), ang: o.ang });
-          for (const s of [-1, 1]) for (const t of [-1, 1]) masts.push({ x: o.c[0] + ax[0] * s * o.len * 0.3 - ax[1] * t * (o.wid / 2 + 5), z: o.c[1] + ax[1] * s * o.len * 0.3 + ax[0] * t * (o.wid / 2 + 5) });
+          for (const s of [-1, 1]) posts.push({ x: o.c[0] + ax[0] * s * (o.len / 2 - 3), z: o.c[1] + ax[1] * s * (o.len / 2 - 3), ang: o.ang, y: y0 });
+          for (const s of [-1, 1]) for (const t of [-1, 1]) masts.push({ x: o.c[0] + ax[0] * s * o.len * 0.3 - ax[1] * t * (o.wid / 2 + 5), z: o.c[1] + ax[1] * s * o.len * 0.3 + ax[0] * t * (o.wid / 2 + 5), y: y0 });
         }
         if (sport.startsWith('tennis') || sport.startsWith('volleyball') || sport.startsWith('badminton')) {
           const h = sport.startsWith('tennis') ? 1.0 : sport.startsWith('badminton') ? 1.55 : 2.4;
           const net = new THREE.Mesh(new THREE.PlaneGeometry(o.wid * 0.85, sport.startsWith('tennis') ? 1.0 : 0.9),
             new THREE.MeshBasicMaterial({ color: '#f0f0f0', transparent: true, opacity: 0.45, side: THREE.DoubleSide }));
-          net.position.set(o.c[0], h - 0.45, o.c[1]); net.rotation.y = -o.ang + Math.PI / 2; group.add(net);
+          net.position.set(o.c[0], y0 + h - 0.45, o.c[1]); net.rotation.y = -o.ang + Math.PI / 2; group.add(net);
         }
         break;
       }
@@ -306,12 +309,13 @@ export function buildAreas(data, scene, env) {
   // new football ground: the infield of the athletics track
   const track = data.areas.find((a) => a.kind === 'track');
   if (track && track.holes && track.holes[0]) {
+    y0 = track.y ?? 0;
     addFlatPoly(F('lawn', mats.lawn), track.holes[0], [], 0.035, 1 / 6);
     const c = centroid(track.holes[0]);
     const bb = bbox(track.holes[0]);
     const tall = bb[3] - bb[1] > bb[2] - bb[0];
-    for (const s of [-1, 1]) posts.push({ x: c[0] + (tall ? 0 : s * 45), z: c[1] + (tall ? s * 45 : 0), ang: tall ? Math.PI / 2 : 0 });
-    for (const s of [-1, 1]) for (const t of [-1, 1]) masts.push({ x: c[0] + s * ((bb[2] - bb[0]) / 2 + 14), z: c[1] + t * (bb[3] - bb[1]) * 0.3 });
+    for (const s of [-1, 1]) posts.push({ x: c[0] + (tall ? 0 : s * 45), z: c[1] + (tall ? s * 45 : 0), ang: tall ? Math.PI / 2 : 0, y: y0 });
+    for (const s of [-1, 1]) for (const t of [-1, 1]) masts.push({ x: c[0] + s * ((bb[2] - bb[0]) / 2 + 14), z: c[1] + t * (bb[3] - bb[1]) * 0.3, y: y0 });
   }
   // central academic quad lawn (the big courtyard is open, not a hole in the footprint)
   for (const k in flat) {
@@ -327,15 +331,15 @@ export function buildAreas(data, scene, env) {
     const bar = new THREE.CylinderGeometry(0.07, 0.07, 2.44, 6);
     for (const s of [-1, 1]) { const m = new THREE.Mesh(bar, white); m.position.set(0, 1.22, s * 3.66); g.add(m); }
     const top = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 7.32, 6), white); top.rotation.x = Math.PI / 2; top.position.y = 2.44; g.add(top);
-    g.position.set(p.x, 0, p.z); g.rotation.y = -p.ang; group.add(g);
+    g.position.set(p.x, p.y, p.z); g.rotation.y = -p.ang; group.add(g);
   }
   // flood-light masts
   const steel = new THREE.MeshStandardMaterial({ color: '#8d9399', roughness: 0.5, metalness: 0.6 });
   const lampMat = new THREE.MeshStandardMaterial({ color: '#dddddd', emissive: '#fff4d6', emissiveIntensity: 0 });
   env.nightEmissive.push({ mat: lampMat, on: 3 });
   for (const p of masts) {
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.3, 18, 8), steel); pole.position.set(p.x, 9, p.z); pole.castShadow = true; group.add(pole);
-    const head = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.2, 0.4), lampMat); head.position.set(p.x, 18.2, p.z); head.lookAt(0, 0, 0); group.add(head);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.3, 18, 8), steel); pole.position.set(p.x, p.y + 9, p.z); pole.castShadow = true; group.add(pole);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.2, 0.4), lampMat); head.position.set(p.x, p.y + 18.2, p.z); head.lookAt(0, 0, 0); group.add(head);
   }
   scene.add(group);
   return { group, places };
@@ -383,7 +387,7 @@ export function buildRocks(data, scene, height) {
 }
 
 // -------------------------------------------------------------- street lamps
-export function buildLamps(data, scene, env) {
+export function buildLamps(data, scene, env, height) {
   const r = rng(23);
   const spots = [];
   for (const road of data.roads) {
@@ -414,9 +418,10 @@ export function buildLamps(data, scene, env) {
   const d = new THREE.Object3D();
   const glowPos = [];
   spots.forEach((s, i) => {
-    d.position.set(s.x, 0, s.z); d.rotation.set(0, -s.ang, 0); d.updateMatrix();
+    s.y = height(s.x, s.z);
+    d.position.set(s.x, s.y, s.z); d.rotation.set(0, -s.ang, 0); d.updateMatrix();
     ims.forEach((im) => im.setMatrixAt(i, d.matrix));
-    glowPos.push(s.x + Math.cos(s.ang) * 1.5, 6.8, s.z + Math.sin(s.ang) * 1.5);
+    glowPos.push(s.x + Math.cos(s.ang) * 1.5, s.y + 6.8, s.z + Math.sin(s.ang) * 1.5);
   });
   const group = new THREE.Group();
   ims.forEach((im) => group.add(im));
@@ -431,7 +436,7 @@ export function buildLamps(data, scene, env) {
   glow.visible = false; group.add(glow);
   const pool = new THREE.InstancedMesh(new THREE.CircleGeometry(11, 20).rotateX(-Math.PI / 2),
     new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -8, polygonOffsetUnits: -8 }), spots.length);
-  spots.forEach((s, i) => { d.position.set(s.x + Math.cos(s.ang) * 2, 0.12, s.z + Math.sin(s.ang) * 2); d.rotation.set(0, 0, 0); d.updateMatrix(); pool.setMatrixAt(i, d.matrix); });
+  spots.forEach((s, i) => { d.position.set(s.x + Math.cos(s.ang) * 2, s.y + 0.12, s.z + Math.sin(s.ang) * 2); d.rotation.set(0, 0, 0); d.updateMatrix(); pool.setMatrixAt(i, d.matrix); });
   pool.visible = false; pool.renderOrder = 8; group.add(pool);
   env.nightVisible.push(pool); env.nightOnly = [glow];
   scene.add(group);
@@ -441,7 +446,7 @@ export function buildLamps(data, scene, env) {
 // ----------------------------------------------------------------- the gate
 export const GATE = { x: -55.5, z: -407, ang: Math.atan2(7, 21) };
 
-export function buildGate(data, scene) {
+export function buildGate(data, scene, height) {
   const g = new THREE.Group();
   const cream = new THREE.MeshStandardMaterial({ map: plainTex('#ead9bf', 91, 0.05), roughness: 0.9 });
   const W = 30, Hh = 9.2, beam = 1.7;
@@ -484,7 +489,7 @@ export function buildGate(data, scene) {
   const blue = signTex([{ text: 'Birla Institute of Technology & Science, Pilani', size: 54, y: 0.42, color: '#ffffff' }, { text: 'Hyderabad Campus', size: 44, y: 0.74, color: '#ffffff', weight: 500 }], { w: 1280, h: 256, bg: '#27348b' });
   const wall = box(13, 2.6, 0.4, -W / 2 - 7.5, 1.3, -0.6, new THREE.MeshStandardMaterial({ map: blue, roughness: 0.8 }));
   wall.rotation.y = 0.12;
-  g.position.set(GATE.x, 0, GATE.z);
+  g.position.set(GATE.x, height(GATE.x, GATE.z), GATE.z);
   g.rotation.y = -GATE.ang;
   scene.add(g);
   return g;

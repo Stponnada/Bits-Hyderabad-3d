@@ -15,7 +15,8 @@ export function buildBuildings(data, scene) {
   const batches = new Map();   // key -> Geo
   const mats = new Map();
   const nightMats = [];
-  const G = (key) => { if (!batches.has(key)) batches.set(key, new Geo()); return batches.get(key); };
+  let curY = 0;                // ground level of the building being built (b.y, set by terrain.js)
+  const G = (key) => { if (!batches.has(key)) batches.set(key, new Geo()); const g = batches.get(key); g.yo = curY; return g; };
 
   const wallMat = (style, levels, windows) => {
     const key = `w_${style}_${levels}_${windows ? 1 : 0}`;
@@ -135,6 +136,7 @@ export function buildBuildings(data, scene) {
       // stepped octagonal terracotta roof crowning the library wing
       const parent = data.buildings.find((p) => p.kind === 'academic' && pip(...centroid(b.outer), p.outer));
       const H = parent ? heightOf(parent) : 15.6;
+      curY = parent?.y ?? 0;
       const c = centroid(b.outer);
       frustum(b.outer, c, H, H + 2.6, 1.0, 1.0, 'glass');
       frustum(b.outer, c, H + 2.6, H + 3.6, 1.1, 0.86, 'terracotta');
@@ -142,7 +144,7 @@ export function buildBuildings(data, scene) {
       frustum(b.outer, c, H + 5.2, H + 6.1, 0.8, 0.58, 'terracotta');
       frustum(b.outer, c, H + 6.1, H + 7.2, 0.42, 0.42, 'glass');
       frustum(b.outer, c, H + 7.2, H + 8.2, 0.5, 0.2, 'terracotta');
-      labels.push({ name: 'Central Library', at: [c[0], H + 14, c[1]], major: true });
+      labels.push({ name: 'Central Library', at: [c[0], curY + H + 14, c[1]], major: true });
       // glass curtain wall on the wing's north face (the view from the main gate)
       if (parent) {
         // the wing runs along the campus grid; walk from the octagon to the wing's north end
@@ -157,12 +159,14 @@ export function buildBuildings(data, scene) {
     if (b.on != null && byId.has(b.on)) {
       const p = byId.get(b.on);
       const H0 = heightOf(p);
+      curY = p.y ?? 0;
       walls(b.outer, H0, H0 + 3.4, 0.3, false, style, Math.max(1, p.levels), false);
       addFlatPoly(G(p.kind === 'academic' ? 'terracotta' : 'roof_concrete'), b.outer, [], H0 + 3.4);
       continue;
     }
 
     const H = heightOf(b);
+    curY = b.y ?? 0;
     const hip = (b.kind === 'mess' || b.kind === 'auditorium') && b.holes.length === 0;
     const par = hip ? 0 : st.parapet;
     walls(b.outer, 0, H, par, false, style, b.levels, b.kind !== 'utility', b.skipEdges);
@@ -172,8 +176,8 @@ export function buildBuildings(data, scene) {
     } else {
       addFlatPoly(G(ROOF[b.kind] || 'roof_concrete'), b.outer, b.holes, H);
     }
-    footprints.push({ outer: b.outer, bb: bbox(b.outer), holes: b.holes, h: H });
-    if (b.name) labels.push({ name: b.name, at: [...centroid(b.outer).slice(0, 1), H + 9, centroid(b.outer)[1]], major: Math.abs(polyArea(b.outer)) > 900 });
+    footprints.push({ outer: b.outer, bb: bbox(b.outer), holes: b.holes, h: curY + H });
+    if (b.name) labels.push({ name: b.name, at: [...centroid(b.outer).slice(0, 1), curY + H + 9, centroid(b.outer)[1]], major: Math.abs(polyArea(b.outer)) > 900 });
 
     // rooftop clutter
     const area = Math.abs(polyArea(b.outer));
@@ -188,7 +192,7 @@ export function buildBuildings(data, scene) {
           const c = Math.cos(ang), s = Math.sin(ang);
           const ok = [[-w, -d], [w, -d], [w, d], [-w, d]].every(([lx, lz]) => inside(x + (lx * c - lz * s) * 0.65, z + (lx * s + lz * c) * 0.65));
           if (!ok) continue;
-          list.push({ x, z, y: H, ang, ...extra });
+          list.push({ x, z, y: curY + H, ang, ...extra });
           placed++;
         }
       };
@@ -200,6 +204,7 @@ export function buildBuildings(data, scene) {
   }
 
   // stair head-rooms as real boxes in the blank wall material of their style
+  curY = 0;
   for (const h of props.heads) {
     const key = h.style === 'academic' ? 'terracotta' : wallMat(h.style, 1, false);
     G(key).box(h.x, h.z, 4.5, 5.5, h.y, h.y + 2.9, h.ang, 0.2);

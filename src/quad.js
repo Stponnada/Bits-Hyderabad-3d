@@ -32,17 +32,19 @@ export function prepareQuad(data) {
   QUAD.acad = acad; QUAD.aud = aud;
   // the wings are lower than the auditorium: three storeys, the top one a plain stone band
   acad.levels = 3; acad.h = 10.4;
+  aud.padWith = ACAD;                 // the auditorium and the quad share the academic block's level
   const o = acad.outer, n = o.length;
   const idx = [165, ...Array.from({ length: 24 }, (_, i) => i)];
   acad.skipEdges = new Set(idx);
   QUAD.poly = [...idx, 24].map((i) => o[i]);
   QUAD.edges = idx.map((i) => ({ i, ...frame(o[i], o[(i + 1) % n]) }));
   QUAD.audEdge = frame(aud.outer[7], aud.outer[8]);
+  (data.pads ||= []).push({ pts: QUAD.poly, like: ACAD });
   const [cx, cz] = QUAD.c;
   for (const a of data.areas) {
     const c = centroid(a.pts);
     if (a.kind === 'grass' && pip(c[0], c[1], QUAD.poly)) a.hidden = true;
-    if (a.kind === 'stage' && Math.hypot(c[0] - cx, c[1] - cz) < 50) { a.hidden = true; QUAD.stage = a.pts; }
+    if (a.kind === 'stage' && Math.hypot(c[0] - cx, c[1] - cz) < 50) { a.hidden = true; QUAD.stage = a.pts; data.pads.push({ pts: a.pts, like: ACAD }); }
   }
   for (const r of data.roads) if (r.kind === 'foot' && r.pts.every((p) => Math.hypot(p[0] - cx, p[1] - cz) < 50)) r.hidden = true;
   data.rocks = data.rocks.filter((r) => !pip(r[0], r[1], QUAD.poly));
@@ -463,6 +465,7 @@ export function buildQuad(scene, heightOf) {
     if (['pave', 'slab', 'bed', 'kerb'].includes(k)) m.renderOrder = 2;
     group.add(m);
   }
+  group.position.y = QUAD.acad.y ?? 0;
   scene.add(group);
   return group;
 }

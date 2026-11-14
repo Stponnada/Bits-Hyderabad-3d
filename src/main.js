@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { buildBuildings } from './buildings.js';
-import { makeHeight, buildGround, buildRoads, buildAreas, buildRocks, buildLamps, buildGate, buildBoundaryWall, GATE, fbm } from './world.js';
+import { makeHeight } from './terrain.js';
+import { buildGround, buildRoads, buildAreas, buildRocks, buildLamps, buildGate, buildBoundaryWall, GATE, fbm } from './world.js';
 import { buildTrees, updatePlantLOD, foliageGlow } from './plants.js';
 import { prepareRoundabout, buildRoundabout } from './roundabout.js';
 import { prepareQuad, buildQuad } from './quad.js';
@@ -137,7 +138,7 @@ let height = () => 0, footprints = [], labelSprites = [], named = [], data = nul
 function goTo(p) {
   const [, tx, tz, bearing, dist, h] = p;
   const b = THREE.MathUtils.degToRad(bearing);
-  camera.position.set(tx + Math.sin(b) * dist, h, tz - Math.cos(b) * dist);
+  camera.position.set(tx + Math.sin(b) * dist, h + height(tx, tz), tz - Math.cos(b) * dist);
   const dx = tx - camera.position.x, dz = tz - camera.position.z;
   player.yaw = Math.atan2(-dx, -dz);
   player.pitch = -Math.atan2(h - 6, Math.hypot(dx, dz)) * 0.9;
@@ -151,27 +152,29 @@ function setMode(m) {
 
 async function init() {
   data = await (await fetch('campus.json')).json();
+  const dem = await (await fetch('dem.json')).json();
+  data.pads = [];
   // the mapped guard booths are replaced by the modelled gate
   data.buildings = data.buildings.filter((b) => { const c = centroid(b.outer); return !(b.kind === 'kiosk' && Math.hypot(c[0] - GATE.x, c[1] - GATE.z) < 26); });
   prepareRoundabout(data);
   prepareQuad(data);
-  height = makeHeight(data.boundary);
+  height = makeHeight(data, dem);
   buildGround(data, scene, height);
   buildRoads(data, scene, height);
   const B = buildBuildings(data, scene);
   footprints = B.footprints; nightMats = B.nightMats;
-  const A = buildAreas(data, scene, env);
+  const A = buildAreas(data, scene, env, height);
   const trees = buildTrees(data, scene, height);
   buildRocks(data, scene, height);
-  buildLamps(data, scene, env);
-  buildGate(data, scene);
-  buildRoundabout(scene, env);
+  buildLamps(data, scene, env, height);
+  buildGate(data, scene, height);
+  buildRoundabout(scene, env, height);
   buildQuad(scene, B.heightOf);
   buildBoundaryWall(data, scene, height);
 
   // labels
-  const all = [...B.labels, ...data.labels.map((l) => ({ name: l.name, at: [l.at[0], 26, l.at[1]], major: true })), ...A.places.map((p) => ({ ...p, major: false })),
-    { name: 'Main Gate', at: [GATE.x, 14, GATE.z], major: true }];
+  const all = [...B.labels, ...data.labels.map((l) => ({ name: l.name, at: [l.at[0], height(l.at[0], l.at[1]) + 26, l.at[1]], major: true })), ...A.places.map((p) => ({ ...p, major: false })),
+    { name: 'Main Gate', at: [GATE.x, height(GATE.x, GATE.z) + 14, GATE.z], major: true }];
   const seen = new Set();
   for (const l of all) {
     if (!l.name || seen.has(l.name)) continue; seen.add(l.name);
@@ -341,7 +344,7 @@ function buildUI() {
     const r = c.getBoundingClientRect();
     const x = MAP.x0 + ((e.clientX - r.left) / r.width) * (MAP.x1 - MAP.x0), z = MAP.z0 + ((e.clientY - r.top) / r.height) * (MAP.z1 - MAP.z0);
     camera.position.x = x; camera.position.z = z;
-    if (player.mode === 'fly') camera.position.y = Math.max(camera.position.y, 30);
+    if (player.mode === 'fly') camera.position.y = Math.max(camera.position.y, height(x, z) + 30);
     if (blocked(x, z, camera.position.y)) { setMode('fly'); camera.position.y = Math.max(camera.position.y, 40); }
   });
   const ul = $('places');

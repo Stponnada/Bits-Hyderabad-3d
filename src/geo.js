@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 
 export class Geo {
-  constructor() { this.p = []; this.n = []; this.uv = []; this.i = []; }
+  constructor() { this.p = []; this.n = []; this.uv = []; this.i = []; this.yo = 0; }   // yo: ground level added to every vertex
   vert(p, n, u, v) {
-    this.p.push(p[0], p[1], p[2]); this.n.push(n[0], n[1], n[2]); this.uv.push(u, v);
+    this.p.push(p[0], p[1] + this.yo, p[2]); this.n.push(n[0], n[1], n[2]); this.uv.push(u, v);
     return this.p.length / 3 - 1;
   }
   // a,b,c,d in order around the quad; front face = (a,b,c)
@@ -107,7 +107,8 @@ export function addFlatPoly(geo, outer, holes, y, uvScale = 0.125) {
 }
 
 // ribbon along a polyline. returns nothing; pushes into geo.
-export function addRibbon(geo, pts, width, yFn, { closed = false, vScale = 0.125, maxSeg = 12, uRep = 1 } = {}) {
+// cols splits it across its width, so a wide ribbon can follow uneven ground
+export function addRibbon(geo, pts, width, yFn, { closed = false, vScale = 0.125, maxSeg = 12, uRep = 1, cols = 1 } = {}) {
   // densify
   const P = [];
   const n = pts.length;
@@ -143,15 +144,18 @@ export function addRibbon(geo, pts, width, yFn, { closed = false, vScale = 0.125
     const w = hw / cosHalf;
     if (r > 0) { const q = P[(r - 1) % m]; dist += Math.hypot(cur[0] - q[0], cur[1] - q[1]); }
     const lx = cur[0] + nx * w, lz = cur[1] + nz * w, rx = cur[0] - nx * w, rz = cur[1] - nz * w;
-    geo.vert([lx, yFn(lx, lz), lz], [0, 1, 0], 0, dist * vScale);
-    geo.vert([rx, yFn(rx, rz), rz], [0, 1, 0], uRep, dist * vScale);
+    for (let c = 0; c <= cols; c++) {
+      const f = c / cols, x = lx + (rx - lx) * f, z = lz + (rz - lz) * f;
+      geo.vert([x, yFn(x, z), z], [0, 1, 0], uRep * f, dist * vScale);
+    }
   }
-  for (let r = 0; r < rows - 1; r++) {
-    const a = base + r * 2;
+  const stride = cols + 1;
+  for (let r = 0; r < rows - 1; r++) for (let c = 0; c < cols; c++) {
+    const a = base + r * stride + c, a1 = a + 1, b = a + stride, b1 = b + 1;
     // ensure upward-facing winding
-    const pa = [geo.p[a * 3], geo.p[a * 3 + 2]], pb = [geo.p[(a + 1) * 3], geo.p[(a + 1) * 3 + 2]], pc = [geo.p[(a + 2) * 3], geo.p[(a + 2) * 3 + 2]];
+    const pa = [geo.p[a * 3], geo.p[a * 3 + 2]], pb = [geo.p[a1 * 3], geo.p[a1 * 3 + 2]], pc = [geo.p[b * 3], geo.p[b * 3 + 2]];
     const ny = (pb[1] - pa[1]) * (pc[0] - pa[0]) - (pb[0] - pa[0]) * (pc[1] - pa[1]);
-    if (ny >= 0) geo.i.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
-    else geo.i.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+    if (ny >= 0) geo.i.push(a, a1, b, a1, b1, b);
+    else geo.i.push(a, b, a1, a1, b, b1);
   }
 }

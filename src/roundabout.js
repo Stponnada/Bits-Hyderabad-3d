@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Geo, addFlatPoly } from './geo.js';
 import { rng, canvasTex, paverTex, grassTex, plainTex } from './textures.js';
+import { GATE } from './world.js';
 import { leafTex, blob, merge, plantMaterials, extraPlants, noTreeZones, foliageGlow } from './plants.js';
 
 // Entrance roundabout just inside the main gate (centre and radius of the mapped ring road)
@@ -11,6 +12,9 @@ export function prepareRoundabout(data) {
   data.roads = data.roads.filter((r) => !(r.kind === 'foot' && r.closed && Math.hypot(r.pts[0][0] - RB.x, r.pts[0][1] - RB.z) < 40));
   data.areas = data.areas.filter((a) => !(a.kind === 'fountain' && Math.hypot(a.pts[0][0] - RB.x, a.pts[0][1] - RB.z) < 40));
   noTreeZones.push([RB.x, RB.z, RB.r - RB.roadW / 2]);
+  // the ring road and the gate stand on one level pad
+  const circle = (x, z, r) => Array.from({ length: 32 }, (_, i) => [x + Math.cos((i / 32) * Math.PI * 2) * r, z + Math.sin((i / 32) * Math.PI * 2) * r]);
+  (data.pads ||= []).push({ pts: circle(RB.x, RB.z, RB.r + 6), at: [RB.x, RB.z] }, { pts: circle(GATE.x, GATE.z, 20), at: [RB.x, RB.z] });
   const P = (ang, rad, kind, s, extra = {}) => extraPlants.push({ x: RB.x + Math.cos(ang) * rad, z: RB.z + Math.sin(ang) * rad, kind, s, ...extra });
   // curated planting, after the reference photo: tiered conifers, a spreading tree, royal palms
   P(0.6, 13, 'conifer', 1.0); P(1.5, 16, 'conifer', 0.85); P(3.9, 15, 'conifer', 0.9);
@@ -52,7 +56,7 @@ function hedge(geo, rad, w, h, a0, a1, colTop, colBot) {
   }
 }
 
-export function buildRoundabout(scene, env) {
+export function buildRoundabout(scene, env, height) {
   const g = new THREE.Group();
   const rIn = RB.r - RB.roadW / 2;                 // inner edge of the carriageway
   const poly = { polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 };
@@ -133,6 +137,7 @@ export function buildRoundabout(scene, env) {
   ped.position.set(RB.x, 1.52 + 1.05, RB.z); ped.rotation.y = 0.5 + Math.PI / 4; ped.castShadow = true; g.add(ped);
   const cap = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.2, 1.5), white); cap.position.set(RB.x, 1.52 + 2.2, RB.z); cap.rotation.y = 0.5; cap.castShadow = true; g.add(cap);
 
+  g.position.y = height(RB.x, RB.z);
   scene.add(g);
   return g;
 }

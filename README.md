@@ -29,6 +29,8 @@ Click the minimap to teleport, or use the "Jump to" list. A view can be linked d
   all in local metres. It also classifies satellite imagery into canopy, grass and soil, which
   drives tree placement (about 20,000 trees) and the painted ground map `public/ground.jpg`.
   A few buildings missing from OpenStreetMap were digitised by hand from imagery.
+- `tools/dem.py` downloads a 30 m elevation grid (SRTM) to `public/dem.json`. `src/terrain.js` smooths it,
+  resamples it to 4 m, levels a pad under every building, court and lawn, and grades the roads.
 - `src/buildings.js` extrudes every footprint, with procedural facades per building type
   (stone and red sandstone academic blocks, white hostels, housing), parapets, rooftop solar
   arrays and tanks, the library's stepped roof and glass front, and hipped metal roofs.
@@ -36,5 +38,5 @@ Click the minimap to teleport, or use the "Jump to" list. A view can be linked d
   street lamps, the main gate and the boundary wall.
 - `src/main.js` handles sky, lighting, time of day, movement, the minimap and labels.
 
-Map data (c) OpenStreetMap contributors, ODbL. Land cover was derived from Esri World Imagery,
+Map data (c) OpenStreetMap contributors, ODbL. Elevation: NASA SRTM 1 arc-second, via Open Topo Data. Land cover was derived from Esri World Imagery,
 which is used as a reference only and is not redistributed.
