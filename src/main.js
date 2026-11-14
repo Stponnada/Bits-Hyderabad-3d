@@ -1,4 +1,3 @@
-import { prepareGroundDetail, buildGroundCover, updateGroundCover } from './ground-detail.js';
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { buildBuildings } from './buildings.js';
@@ -8,6 +7,9 @@ import { prepareRoundabout, buildRoundabout, RB } from './roundabout.js';
 import { textSprite, canvasTex } from './textures.js';
 import { pip, centroid } from './geo.js';
 import { createContactShading } from './contact-shading.js';
+import { prepareGroundDetail, buildGroundCover, updateGroundCover } from './ground-detail.js';
+import { buildForest, updateForest, forestView } from './forest.js';
+import { configureForestZones, forestAtmosphereDistance } from './forest-zone.js';
 
 const qs = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -134,6 +136,10 @@ const PLACES = [
   ['Cricket Ground', 476, 412, 320, 130, 35],
   ['Faculty Housing', 470, -40, 200, 200, 70],
   ['Campus Overview', 40, -40, 180, 900, 620],
+  ['Woodland Trail', -510, -148, 0, 47, 1.8],
+  ['North Boundary Woods', -470, -603, 245, 0, 1.8],
+  ['East Boundary Woods', 520, 333, 0, 0, 1.8],
+  ['South Boundary Woods', 150, 296, 66, 0, 1.8],
 ];
 
 const player = { yaw: 0, pitch: 0, mode: 'fly', vel: new THREE.Vector3() };
@@ -141,6 +147,17 @@ let height = () => 0, footprints = [], labelSprites = [], named = [], data = nul
 let treePopulation = null;
 
 function goTo(p) {
+  if (p[0].endsWith('Boundary Woods')) {
+    camera.position.set(p[1], p[5], p[2]);
+    player.yaw = THREE.MathUtils.degToRad(p[3]); player.pitch = -0.02;
+    setMode('walk'); return;
+  }
+  if (p[0] === 'Woodland Trail') {
+    camera.position.set(forestView.x, forestView.y, forestView.z);
+    player.yaw = THREE.MathUtils.degToRad(forestView.yaw);
+    player.pitch = THREE.MathUtils.degToRad(forestView.pitch);
+    setMode('walk'); return;
+  }
   const [, tx, tz, bearing, dist, h] = p;
   const b = THREE.MathUtils.degToRad(bearing);
   camera.position.set(tx + Math.sin(b) * dist, h, tz - Math.cos(b) * dist);
@@ -160,6 +177,7 @@ async function init() {
   // the mapped guard booths are replaced by the modelled gate
   data.buildings = data.buildings.filter((b) => { const c = centroid(b.outer); return !(b.kind === 'kiosk' && Math.hypot(c[0] - GATE.x, c[1] - GATE.z) < 26); });
   prepareRoundabout(data);
+  configureForestZones(data, GATE);
   prepareGroundDetail(data, RB, GATE);
   height = makeHeight(data.boundary);
   buildGround(data, scene, height);
@@ -169,6 +187,7 @@ async function init() {
   const A = buildAreas(data, scene, env);
   const trees = buildTrees(data, scene, height);
   treePopulation = { original: trees.original, added: trees.added, total: trees.count };
+  await buildForest(scene, height, trees.forestTrees, trees.forestOriginals, renderer);
   buildRocks(data, scene, height);
   buildLamps(data, scene, env);
   buildGate(data, scene);
@@ -378,26 +397,37 @@ function hud(now) {
 // ----------------------------------------------------------------------- loop
 const clock = new THREE.Clock();
 const st = new THREE.Vector3();
+let lastForestShadow = -Infinity;
 function frame(now) {
   const dt = Math.min(0.05, clock.getDelta());
   move(dt);
-  // keep the shadow frustum around the viewer, snapped to texels to avoid shimmer
-  st.set(0, 0, -1).applyEuler(camera.rotation); st.y = 0; if (st.lengthSq() > 0) st.normalize();
-  const extent = Math.ceil(THREE.MathUtils.lerp(180, 360, THREE.MathUtils.smoothstep(camera.position.y, 2, 220)) / 16) * 16;
-  if (extent !== SH) {
-    SH = extent;
-    Object.assign(sun.shadow.camera, { left: -SH, right: SH, top: SH, bottom: -SH });
-    sun.shadow.camera.updateProjectionMatrix();
+  // The woodland canopy is effectively static at this scale. Refresh its
+  // expensive sun map at 10 Hz; geometry, lighting, grass and wind still render
+  // every frame. Hold the light's projection between refreshes to prevent drift.
+  const forestShadows = forestAtmosphereDistance(camera.position.x, camera.position.z) < 1.2 && camera.position.y < 28;
+  sun.shadow.autoUpdate = !forestShadows;
+  if (!forestShadows || sun.shadow.needsUpdate || now - lastForestShadow >= 100) {
+    lastForestShadow = now;
+    sun.shadow.needsUpdate = true;
+    // keep the shadow frustum around the viewer, snapped to texels to avoid shimmer
+    st.set(0, 0, -1).applyEuler(camera.rotation); st.y = 0; if (st.lengthSq() > 0) st.normalize();
+    const extent = Math.ceil(THREE.MathUtils.lerp(180, 360, THREE.MathUtils.smoothstep(camera.position.y, 2, 220)) / 16) * 16;
+    if (extent !== SH) {
+      SH = extent;
+      Object.assign(sun.shadow.camera, { left: -SH, right: SH, top: SH, bottom: -SH });
+      sun.shadow.camera.updateProjectionMatrix();
+    }
+    const reach = Math.min(SH * 0.45, 40 + camera.position.y * 0.8);
+    const tx = camera.position.x + st.x * reach, tz = camera.position.z + st.z * reach;
+    const snap = (SH * 2) / 4096;
+    sun.target.position.set(Math.round(tx / snap) * snap, 0, Math.round(tz / snap) * snap);
+    sun.position.copy(sun.target.position).addScaledVector(sunDir, 1100);
   }
-  const reach = Math.min(SH * 0.45, 40 + camera.position.y * 0.8);
-  const tx = camera.position.x + st.x * reach, tz = camera.position.z + st.z * reach;
-  const snap = (SH * 2) / 4096;
-  sun.target.position.set(Math.round(tx / snap) * snap, 0, Math.round(tz / snap) * snap);
-  sun.position.copy(sun.target.position).addScaledVector(sunDir, 1100);
   sky.position.copy(camera.position); stars.position.copy(camera.position);
   clouds.position.set(camera.position.x, 2400, camera.position.z); clouds.rotation.y = now * 0.000004;
-  updatePlantLOD(camera.position, now);
+  updatePlantLOD(camera.position, now, 2.8 / Math.max(scene.fog.density, 0.0001));
   updateGroundCover(camera.position, now);
+  updateForest(camera, now, scene, TIMES[timeKey]);
   contactShading.render();
   drawMap(); hud(now);
 }

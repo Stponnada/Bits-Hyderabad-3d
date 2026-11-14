@@ -42,5 +42,28 @@ Click the minimap to teleport, or use the "Jump to" list. A view can be linked d
   the population and placement constraints.
 - `src/main.js` handles sky, lighting, time of day, movement, the minimap and labels.
 
+## Woodland and campus perimeter
+
+Choose **Woodland Trail**, **North Boundary Woods**, **East Boundary Woods**,
+or **South Boundary Woods** from Jump To. The forest treatment follows existing
+planting around the campus wall, approximately 55 metres inside and 15 metres
+outside the boundary. Existing tree positions and the 51,116-tree total are
+preserved; entrances, paved corridors, buildings, water and sports grounds are
+excluded from the new ground cover. Cleared stretches remain open.
+
+`src/forest-zone.js` derives coverage from the campus boundary and mapped trees.
+`src/forest.js` retains the original woodland trail; `src/perimeter-forest.js`
+renders the extended belt using shared tree geometry, spatial distance levels,
+and camera-local grass, ferns and shrubs. Inactive undergrowth sections are
+released from GPU memory. `src/forest-proxy.js` bakes side and top canopy views
+for distant trees, including aerial views. Mist and sky fill blend in locally
+at walking height, and vegetation hidden by the mist is culled. Canopy shadows
+refresh at 10 Hz inside woodland areas.
+
+The MIT-licensed EZ-Tree generator by Daniel Greenheck is vendored under
+`src/vendor/ez-tree/`. Asset sources and licenses are recorded in
+`public/forest/TEXTURE-LICENSE.md`; the generator's license is retained with
+both the source and the assets.
+
 Map data (c) OpenStreetMap contributors, ODbL. Land cover was derived from Esri World Imagery,
 which is used as a reference only and is not redistributed.
