@@ -1,3 +1,5 @@
+import { groundMaterial } from './ground-detail.js';
+import { surfaceMaterial } from './surfaces.js';
 import * as THREE from 'three';
 import { Geo, addFlatPoly } from './geo.js';
 import { rng, canvasTex, paverTex, grassTex, plainTex } from './textures.js';
@@ -58,11 +60,11 @@ export function buildRoundabout(scene, env) {
   const poly = { polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 };
   // red paver footpath hugging the kerb, lawn inside
   const pav = new Geo(); ring(pav, rIn - 3.0, rIn - 0.32, 0.09, 0, Math.PI * 2, 0.62);
-  const pm = new THREE.Mesh(pav.build(), new THREE.MeshStandardMaterial({ map: paverTex('#b0624c'), roughness: 0.95, side: THREE.DoubleSide, ...poly })); pm.receiveShadow = true; g.add(pm);
+  const pm = new THREE.Mesh(pav.build(), surfaceMaterial('pavers', '#a66b55', { side: THREE.DoubleSide, ...poly })); pm.receiveShadow = true; g.add(pm);
   const lawn = new Geo();
   const disc = []; for (let i = 0; i < 48; i++) disc.push([RB.x + Math.cos((i / 48) * 6.2832) * (rIn - 3.0), RB.z + Math.sin((i / 48) * 6.2832) * (rIn - 3.0)]);
   addFlatPoly(lawn, disc, [], 0.06, 1 / 5);
-  const lm = new THREE.Mesh(lawn.build(), new THREE.MeshStandardMaterial({ map: grassTex(), roughness: 1, ...poly })); lm.receiveShadow = true; g.add(lm);
+  const lm = new THREE.Mesh(lawn.build(), groundMaterial(new THREE.MeshStandardMaterial({ map: grassTex(), roughness: 1, ...poly }))); lm.receiveShadow = true; g.add(lm);
 
   // hedges: bright duranta border with gaps, darker clipped hedge behind it
   const hg = new Geo();
@@ -128,7 +130,7 @@ export function buildRoundabout(scene, env) {
   const tiers = [[7.2, 0.38], [6.0, 0.76], [4.8, 1.14], [3.6, 1.52]];
   for (const [w, top] of tiers) sg.box(RB.x, RB.z, w, w, 0, top, 0.5, 0.35);
   const sm = new THREE.Mesh(sg.build(), stone); sm.castShadow = true; sm.receiveShadow = true; g.add(sm);
-  const white = new THREE.MeshStandardMaterial({ map: plainTex('#e6e2d8', 57, 0.05), roughness: 0.8 });
+  const white = surfaceMaterial('concrete', '#e0dbce');
   const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 1.25, 2.1, 4), white);
   ped.position.set(RB.x, 1.52 + 1.05, RB.z); ped.rotation.y = 0.5 + Math.PI / 4; ped.castShadow = true; g.add(ped);
   const cap = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.2, 1.5), white); cap.position.set(RB.x, 1.52 + 2.2, RB.z); cap.rotation.y = 0.5; cap.castShadow = true; g.add(cap);

@@ -1,3 +1,6 @@
+import { marineReserved } from './marine-drive-layout.js';
+import { groundMaterial } from './ground-detail.js';
+import { surfaceMaterial } from './surfaces.js';
 import * as THREE from 'three';
 import { Geo, polyArea, centroid, pip, bbox, distToPoly, addFlatPoly, addRibbon } from './geo.js';
 import { rng, noiseTex, roadTex, kerbTex, paverTex, plainTex, grassTex, courtTex, signTex, canvasTex } from './textures.js';
@@ -67,6 +70,7 @@ export function buildGround(data, scene, height) {
       c *= mix(1.0, 0.62 + 0.8 * d1.r, nearF) * (0.82 + 0.36 * d2.g);
       diffuseColor.rgb = c;`);
   };
+  groundMaterial(mat, true);
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
   scene.add(mesh);
@@ -76,11 +80,11 @@ export function buildGround(data, scene, height) {
 // -------------------------------------------------------------------- roads
 export function buildRoads(data, scene, height) {
   const layers = {
-    kerb: { geo: new Geo(), y: 0.035, mat: new THREE.MeshStandardMaterial({ map: paverTex('#b0624c'), roughness: 0.95 }) },
-    foot: { geo: new Geo(), y: 0.05, mat: new THREE.MeshStandardMaterial({ map: paverTex('#b98f72'), roughness: 0.95 }) },
+    kerb: { geo: new Geo(), y: 0.035, mat: surfaceMaterial('pavers', '#a66b55') },
+    foot: { geo: new Geo(), y: 0.05, mat: surfaceMaterial('pavers', '#ad9275') },
     path: { geo: new Geo(), y: 0.03, mat: new THREE.MeshStandardMaterial({ map: plainTex('#a98a63', 51, 0.1), roughness: 1 }) },
-    main: { geo: new Geo(), y: 0.085, mat: new THREE.MeshStandardMaterial({ map: roadTex('asphalt'), roughness: 0.92 }) },
-    service: { geo: new Geo(), y: 0.07, mat: new THREE.MeshStandardMaterial({ map: roadTex('asphalt'), roughness: 0.92 }) },
+    main: { geo: new Geo(), y: 0.085, mat: surfaceMaterial('asphalt', '#4d4b47') },
+    service: { geo: new Geo(), y: 0.07, mat: surfaceMaterial('asphalt', '#4d4b47') },
   };
   const yf = (off) => (x, z) => { const h = height(x, z); return h + off + (h > 0.01 ? 0.35 : 0); };
   const inside = (p) => pip(p[0], p[1], data.boundary);
@@ -183,10 +187,10 @@ export function buildAreas(data, scene, env) {
   const F = (key, mat) => { if (!flat[key]) flat[key] = { geo: new Geo(), mat }; return flat[key].geo; };
   const std = (tex, o = {}) => new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, ...o });
   const mats = {
-    lawn: std(grassTex()),
-    asphalt: std(plainTex('#6b6b6c', 61, 0.08)),
-    concrete: std(plainTex('#bdb9ae', 62, 0.08)),
-    paver: std(paverTex('#c2a488')),
+    lawn: groundMaterial(std(grassTex())),
+    asphalt: surfaceMaterial('asphalt', '#64625c', { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
+    concrete: surfaceMaterial('concrete', '#bdb9ae', { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
+    paver: surfaceMaterial('pavers', '#b6a18a', { polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
     clay: std(plainTex('#a85c42', 63, 0.08)),
     dirt: std(plainTex('#b79468', 64, 0.1)),
     cricket: std(plainTex('#6f8f45', 65, 0.1)),
@@ -316,7 +320,7 @@ export function buildAreas(data, scene, env) {
   for (const k in flat) {
     const m = new THREE.Mesh(flat[k].geo.build(), flat[k].mat); m.receiveShadow = true; group.add(m);
   }
-  const sm = new THREE.Mesh(solid.build(), new THREE.MeshStandardMaterial({ map: plainTex('#c9c4b6', 71, 0.08), roughness: 0.9 }));
+  const sm = new THREE.Mesh(solid.build(), surfaceMaterial('concrete', '#c9c4b6'));
   sm.castShadow = true; sm.receiveShadow = true; group.add(sm);
 
   // goal posts
@@ -366,7 +370,7 @@ export function buildRocks(data, scene, height) {
   const d = new THREE.Object3D();
   const col = new THREE.Color();
   for (let v = 0; v < 3; v++) {
-    const arr = list.filter((_, i) => i % 3 === v);
+    const arr = list.filter((q, i) => i % 3 === v && !marineReserved(q.x, q.z));
     const im = new THREE.InstancedMesh(mk(v * 13.7 + 1), mat, arr.length);
     arr.forEach((q, i) => {
       d.position.set(q.x, height(q.x, q.z) + (q.lift || 0) + q.s * 0.28, q.z);
@@ -442,7 +446,7 @@ export const GATE = { x: -55.5, z: -407, ang: Math.atan2(7, 21) };
 
 export function buildGate(data, scene) {
   const g = new THREE.Group();
-  const cream = new THREE.MeshStandardMaterial({ map: plainTex('#ead9bf', 91, 0.05), roughness: 0.9 });
+  const cream = surfaceMaterial('concrete', '#dfd4bf');
   const W = 30, Hh = 9.2, beam = 1.7;
   const box = (w, h, dd, x, y, z, m = cream) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, dd), m); b.position.set(x, y, z); b.castShadow = true; b.receiveShadow = true; g.add(b); return b; };
   box(W, beam, 1.1, 0, Hh - beam / 2, 0);
@@ -513,7 +517,7 @@ export function buildBoundaryWall(data, scene, height) {
       geo.box(mx, mz, l + 0.05, 0.35, height(mx, mz) - 0.3, height(mx, mz) + 2.3, Math.atan2(c[1] - a[1], c[0] - a[0]), 0.25);
     }
   }
-  const m = new THREE.Mesh(geo.build(), new THREE.MeshStandardMaterial({ map: plainTex('#d8cfbb', 95, 0.08), roughness: 0.95 }));
+  const m = new THREE.Mesh(geo.build(), surfaceMaterial('concrete', '#cec6b5'));
   m.castShadow = true; m.receiveShadow = true;
   scene.add(m);
   return m;

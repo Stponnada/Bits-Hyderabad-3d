@@ -1,3 +1,4 @@
+import { arrangeMarineTrees, marineReserved, marineLayout } from './marine-drive-layout.js';
 import { rng } from './textures.js';
 import { pip, distToPoly, bbox } from './geo.js';
 import { GATE } from './world.js';
@@ -46,6 +47,7 @@ export function createOriginalTrees(data, noTreeZones, extraPlants) {
     if (x > e[0] && x < e[2] && z > e[1] && z < e[3]) continue;
     list.push({ x, z, s: 0.8 + r() * 0.8, kind: r() < 0.6 ? 'scrub' : 'far' });
   }
+  arrangeMarineTrees(list, data);
   return { trees: list, random: r };
 }
 
@@ -110,6 +112,7 @@ export function createCompanionTrees(data, originals, noTreeZones = []) {
       const angle = phase + attempt * 2.399963;
       const x = source.x + Math.cos(angle) * radius, z = source.z + Math.sin(angle) * radius;
       if (inside && !pip(x, z, data.boundary)) continue;
+      if (marineReserved(x, z, 1)) continue;
       if (trunks.at(x, z).some((t) => Math.hypot(x - t.x, z - t.z) < t.radius)) continue;
       if (obstacles.at(x, z).some((o) => o.pts
         ? pip(x, z, o.pts) || distToPoly(x, z, o.pts) < o.margin
@@ -121,5 +124,6 @@ export function createCompanionTrees(data, originals, noTreeZones = []) {
     // An exact one-for-one population must not silently lose trees to exclusions.
     if (!placed) throw new Error(`No clear planting position for tree ${parent}`);
   });
+  if (marineLayout()) marineLayout().companionViolations = additions.filter(t => marineReserved(t.x, t.z)).length;
   return additions;
 }
