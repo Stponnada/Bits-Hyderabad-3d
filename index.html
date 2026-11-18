@@ -6,72 +6,224 @@
 <link rel="icon" href="data:," />
 <title>BITS Pilani, Hyderabad Campus in 3D</title>
 <style>
-  :root { --panel: rgba(16, 20, 28, 0.72); --line: rgba(255, 255, 255, 0.12); --ink: #f2efe8; --dim: #b7b3a8; --accent: #f0b23c; }
+  @font-face { font-family: Satoshi; src: url('/fonts/Satoshi-Variable.woff2') format('woff2'); font-weight: 300 900; font-display: swap; }
+  :root { --bg: #000; --ink: #fff; --dim: rgba(255, 255, 255, 0.55); --faint: rgba(255, 255, 255, 0.32);
+    --line: rgba(255, 255, 255, 0.14); --line2: rgba(255, 255, 255, 0.36); --font: Satoshi, system-ui, sans-serif; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e14; color: var(--ink);
-    font: 14px/1.4 "Avenir Next", "Segoe UI", system-ui, sans-serif; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); font: 500 14px/1.4 var(--font); }
+  button { font-family: var(--font); }
   canvas { display: block; }
   body > canvas { position: fixed; inset: 0; cursor: grab; }
   body > canvas:active { cursor: grabbing; }
-  .panel { position: fixed; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
-  #top { top: 14px; left: 14px; padding: 12px 16px; max-width: 340px; }
-  #top h1 { margin: 0; font-size: 15px; letter-spacing: 0.02em; font-weight: 700; }
-  #where { color: var(--accent); margin-top: 2px; font-weight: 600; }
-  #stats { color: var(--dim); font-size: 12px; margin-top: 4px; }
-  .row { display: flex; gap: 8px; margin-top: 10px; }
-  .chip { cursor: pointer; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.07); color: var(--ink);
-    border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 12.5px; font-weight: 600; }
-  .chip:hover { background: rgba(255, 255, 255, 0.16); }
-  #placesWrap { top: 150px; left: 14px; width: 210px; max-height: calc(100vh - 250px); overflow: auto; padding: 8px; }
-  #placesWrap h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim); margin: 4px 8px 6px; }
-  #places button { display: block; width: 100%; text-align: left; border: 0; background: none; color: var(--ink);
-    padding: 6px 8px; border-radius: 7px; font: inherit; font-size: 13px; cursor: pointer; }
-  #places button:hover { background: rgba(255, 255, 255, 0.12); }
-  #mapWrap { right: 14px; bottom: 14px; padding: 6px; transition: all 0.2s; }
-  #map { width: 305px; height: 255px; border-radius: 8px; cursor: crosshair; display: block; }
-  .bigmap #mapWrap { right: 50%; bottom: 50%; transform: translate(50%, 50%); }
-  .bigmap #map { width: min(86vw, 104vh); height: auto; aspect-ratio: 610 / 510; }
-  #help { left: 14px; bottom: 14px; padding: 9px 14px; color: var(--dim); font-size: 12.5px; max-width: calc(100vw - 370px); }
-  kbd { background: rgba(255, 255, 255, 0.13); border-radius: 4px; padding: 1px 6px; color: var(--ink); font: 600 11.5px ui-monospace, Menlo, monospace; }
-  .noui .panel { display: none; }
-  #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #0b0e14; font-size: 16px; color: var(--dim); z-index: 5; }
-  #intro { position: fixed; inset: 0; display: none; place-items: center; background: rgba(8, 10, 16, 0.55); z-index: 4; }
-  #intro.ready { display: grid; }
-  #intro .card { background: rgba(16, 20, 28, 0.9); border: 1px solid var(--line); border-radius: 18px; padding: 30px 34px; max-width: 520px; }
-  #intro h1 { margin: 0 0 4px; font-size: 26px; }
-  #intro p { color: var(--dim); margin: 8px 0; }
-  #intro table { margin: 14px 0; border-spacing: 0 5px; color: var(--ink); }
-  #intro td:first-child { padding-right: 16px; white-space: nowrap; }
-  #enter { margin-top: 8px; background: var(--accent); color: #1c1503; border: 0; border-radius: 10px; padding: 11px 22px; font: 700 15px inherit; cursor: pointer; }
-  @media (max-width: 800px) { #placesWrap, #help { display: none; } #map { width: 180px; height: 150px; } }
+  .panel { position: fixed; background: var(--bg); border: 1px solid var(--line); }
+  .noui .panel, body:has(#boot) .panel { display: none !important; }
+  .caps { text-transform: uppercase; letter-spacing: 0.16em; font-size: 11px; font-weight: 700; color: var(--dim); }
+  kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border: 1px solid var(--line2); color: var(--ink);
+    font: 700 11px/1 var(--font); letter-spacing: 0.04em; vertical-align: middle; }
+  .btn { cursor: pointer; border: 1px solid var(--ink); background: var(--ink); color: #000; font: 700 13px/1 var(--font);
+    letter-spacing: 0.14em; text-transform: uppercase; padding: 14px 26px; }
+  .btn:hover { background: #000; color: var(--ink); }
+  .iconbtn { cursor: pointer; border: 1px solid var(--line2); background: none; color: var(--ink); width: 26px; height: 26px;
+    display: grid; place-items: center; font: 600 16px/1 var(--font); padding: 0; }
+  .iconbtn:hover { background: var(--ink); color: #000; border-color: var(--ink); }
+
+  /* ---------------------------------------------------------------- HUD */
+  #hud { top: 16px; left: 16px; padding: 12px 16px 13px; min-width: 240px; max-width: 360px; }
+  #where { margin-top: 5px; font-size: 17px; font-weight: 700; letter-spacing: 0.01em; }
+  #hints { margin-top: 10px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; color: var(--dim); font-size: 12px; font-weight: 600; }
+  #hints > * { display: inline-flex; gap: 6px; align-items: center; }
+  #hints button { all: unset; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+  #hints button:hover { color: var(--ink); }
+  #fps { color: var(--dim); font-size: 12px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+  /* ------------------------------------------------------------ minimap */
+  #mapWrap { right: 16px; bottom: 16px; padding: 0; }
+  #mapBar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 6px 6px 6px 12px; }
+  #miniSlot { border-top: 1px solid var(--line); }
+  #miniSlot canvas { width: 305px; height: 255px; }
+  #mapWrap.min #miniSlot { display: none; }
+  #mapWrap.away { display: none; }
+  #map { cursor: crosshair; }
+
+  /* --------------------------------------------------------------- menu */
+  #menu { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, 0.62); z-index: 3; }
+  #menu[hidden] { display: none; }
+  #menuCard { width: min(1440px, calc(100vw - 64px)); height: min(880px, calc(100vh - 64px)); display: flex; flex-direction: column;
+    background: var(--bg); border: 1px solid var(--line2); }
+  #menuHead { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 20px; height: 64px; border-bottom: 1px solid var(--line); }
+  #menuHead .title { font-weight: 800; letter-spacing: 0.2em; font-size: 12px; text-transform: uppercase; }
+  #menuHead .title span { color: var(--dim); font-weight: 600; }
+  #menuNav { display: flex; align-items: center; gap: 14px; }
+  #menuTabs { display: flex; gap: 2px; }
+  .tab { cursor: pointer; border: 1px solid transparent; background: none; color: var(--dim); font: 700 13px/1 var(--font);
+    letter-spacing: 0.16em; text-transform: uppercase; padding: 11px 20px; }
+  .tab:hover { color: var(--ink); border-color: var(--line2); }
+  .tab.on { color: #000; background: var(--ink); border-color: var(--ink); }
+  #menuClose { justify-self: end; }
+  #menuBody { flex: 1; min-height: 0; overflow: auto; padding: 28px 32px; scrollbar-width: none; }
+  #menuBody::-webkit-scrollbar { display: none; }
+  #menuFoot { display: flex; gap: 26px; align-items: center; padding: 0 20px; height: 46px; border-top: 1px solid var(--line); color: var(--dim);
+    font-size: 12px; font-weight: 600; }
+  #menuFoot span { display: inline-flex; gap: 7px; align-items: center; }
+  .pane[hidden] { display: none !important; }
+  .pane h2 { margin: 0 0 16px; }
+
+  /* map pane: the map fills the height, a key sits beside it */
+  .pane[data-pane="map"] { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 32px; }
+  #bigSlot { min-height: 0; display: flex; align-items: center; justify-content: center; }
+  #bigSlot canvas { max-width: 100%; max-height: 100%; width: auto; height: auto; border: 1px solid var(--line); }
+  #mapSide { display: flex; flex-direction: column; gap: 26px; min-height: 0; }
+  #mapWhere { font-size: 20px; font-weight: 700; margin-top: 8px; line-height: 1.25; }
+  #legend { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 9px; font-size: 13px; font-weight: 600; }
+  #legend li { display: flex; align-items: center; gap: 12px; }
+  #legend i { width: 14px; height: 14px; flex: none; }
+  #mapSide .note { margin-top: auto; color: var(--dim); font-size: 12.5px; }
+
+  /* locations */
+  #places { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; counter-reset: place; }
+  #places button { counter-increment: place; display: flex; align-items: baseline; gap: 16px; text-align: left; cursor: pointer;
+    border: 1px solid var(--line); background: none; color: var(--ink); padding: 18px 18px; font: 700 15px/1.2 var(--font); }
+  #places button::before { content: counter(place, decimal-leading-zero); color: var(--faint); font-size: 12px; letter-spacing: 0.1em; }
+  #places button:hover { background: var(--ink); color: #000; border-color: var(--ink); }
+  #places button:hover::before { color: rgba(0, 0, 0, 0.5); }
+
+  /* settings */
+  .setting { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .setting:first-child { padding-top: 0; }
+  .setting .lbl { font-weight: 700; font-size: 15px; }
+  .setting .lbl small { display: block; color: var(--dim); font-weight: 500; font-size: 12.5px; margin-top: 2px; }
+  .seg { display: flex; border: 1px solid var(--line2); flex-wrap: wrap; }
+  .seg button { cursor: pointer; border: 0; background: none; color: var(--dim); font: 700 12px/1 var(--font); letter-spacing: 0.12em;
+    text-transform: uppercase; padding: 11px 16px; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button:hover { color: var(--ink); }
+  .seg button.on { background: var(--ink); color: #000; }
+
+  /* controls */
+  .keys { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 0 48px; max-width: 1100px; }
+  .keys div { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 13px 0; border-bottom: 1px solid var(--line); font-weight: 600; }
+  .keys div span:last-child { display: flex; gap: 6px; align-items: center; color: var(--dim); white-space: nowrap; }
+  #stats { color: var(--faint); font-size: 12px; margin-top: 24px; }
+
+  /* ----------------------------------------------------- loading / title */
+  #boot { position: fixed; inset: 0; z-index: 5; background: var(--bg); display: flex; flex-direction: column; justify-content: space-between;
+    padding: clamp(28px, 6vh, 64px) clamp(24px, 6vw, 80px); transition: background 0.6s; }
+  #boot.ready { background: rgba(0, 0, 0, 0.6); }
+  #boot h1 { margin: 10px 0 0; font-size: clamp(40px, 7vw, 96px); line-height: 0.95; font-weight: 900; letter-spacing: -0.02em; text-transform: uppercase; }
+  #progress { width: min(720px, 100%); }
+  #log { list-style: none; margin: 0 0 18px; padding: 0; font-size: 13px; font-weight: 600; color: var(--faint); min-height: 5.6em; display: flex; flex-direction: column; justify-content: flex-end; }
+  #log li { padding: 2px 0; }
+  #log li::before { content: '✓'; display: inline-block; width: 22px; color: var(--faint); }
+  #log li.now { color: var(--ink); }
+  #log li.now::before { content: '›'; color: var(--ink); }
+  #log li.err::before { content: '×'; }
+  #track { height: 3px; background: rgba(255, 255, 255, 0.14); }
+  #bar { height: 100%; background: var(--ink); transform: scaleX(0); transform-origin: left; transition: transform 0.25s linear; will-change: transform; }
+  #progressFoot { display: flex; justify-content: space-between; align-items: baseline; margin-top: 12px; }
+  #pct { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  #start { display: none; gap: 40px; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; }
+  #boot.ready #progress { display: none; }
+  #boot.ready #start { display: flex; }
+  #start .keys { grid-template-columns: repeat(2, minmax(220px, 300px)); gap: 0 36px; }
+  #start .keys div { padding: 9px 0; }
+  #enterWrap { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+
+  @media (max-width: 800px) {
+    #miniSlot canvas { width: 180px; height: 150px; }
+    #menuCard { width: 100vw; height: 100vh; }
+    #menuHead { grid-template-columns: 1fr auto; } #menuHead .title, #menuFoot { display: none; }
+    #menuNav kbd { display: none; } .tab { padding: 10px 10px; letter-spacing: 0.08em; }
+    #menuBody { padding: 18px; }
+    .pane[data-pane="map"] { grid-template-columns: 1fr; grid-template-rows: auto auto; height: auto; }
+    .keys, #start .keys { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
-<div id="loading">Building the campus…</div>
-<div id="intro"><div class="card">
-  <h1>BITS Pilani, Hyderabad Campus</h1>
-  <p>A walkable 3D model of the Jawahar Nagar campus, built from OpenStreetMap footprints and satellite-derived land cover.</p>
-  <table>
-    <tr><td><kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></td><td>Move</td></tr>
-    <tr><td>Drag mouse</td><td>Look around (double-click to lock the pointer)</td></tr>
-    <tr><td><kbd>Space</kbd> / <kbd>Q</kbd></td><td>Fly up / down</td></tr>
-    <tr><td><kbd>Shift</kbd></td><td>Move faster</td></tr>
-    <tr><td><kbd>F</kbd></td><td>Switch between flying and walking</td></tr>
-    <tr><td><kbd>T</kbd></td><td>Midday, golden hour, night</td></tr>
-    <tr><td><kbd>M</kbd> <kbd>L</kbd> <kbd>H</kbd></td><td>Big map, labels, hide the interface</td></tr>
-  </table>
-  <button id="enter">Enter the campus</button>
-</div></div>
-<div id="top" class="panel">
-  <h1>BITS Pilani · Hyderabad Campus</h1>
-  <div id="where">Loading…</div>
-  <div id="stats"></div>
-  <div class="row"><button id="mode" class="chip">Flying</button><button id="time" class="chip">Midday</button></div>
+<div id="boot">
+  <div>
+    <div class="caps">BITS Pilani</div>
+    <h1>Hyderabad<br>Campus</h1>
+  </div>
+  <div id="progress">
+    <ul id="log"></ul>
+    <div id="track"><div id="bar"></div></div>
+    <div id="progressFoot"><span class="caps">Building the campus</span><span id="pct">00%</span></div>
+  </div>
+  <div id="start">
+    <div class="keys">
+      <div><span>Move</span><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span></div>
+      <div><span>Look around</span><span>Drag mouse</span></div>
+      <div><span>Fly up / down</span><span><kbd>Space</kbd><kbd>Q</kbd></span></div>
+      <div><span>Walk / fly</span><span><kbd>F</kbd></span></div>
+      <div><span>Show labels</span><span>Hold <kbd>Shift</kbd></span></div>
+      <div><span>Menu</span><span><kbd>I</kbd></span></div>
+    </div>
+    <div id="enterWrap"><button id="enter" class="btn">Enter the campus</button><span class="caps">or press <kbd>Enter</kbd></span></div>
+  </div>
 </div>
-<div id="placesWrap" class="panel"><h2>Jump to</h2><div id="places"></div></div>
-<div id="help" class="panel"><kbd>WASD</kbd> move · drag to look · <kbd>Space</kbd>/<kbd>Q</kbd> up/down · <kbd>Shift</kbd> fast · <kbd>F</kbd> walk/fly · <kbd>T</kbd> time · <kbd>M</kbd> map · <kbd>L</kbd> labels · click the map to teleport</div>
-<div id="mapWrap" class="panel"><canvas id="map"></canvas></div>
+
+<div id="hud" class="panel">
+  <div class="caps">BITS Pilani · Hyderabad</div>
+  <div id="where">Loading…</div>
+  <div id="hints"><button id="menuBtn"><kbd>I</kbd> Menu</button><span id="labelHint"><kbd>Shift</kbd> Labels</span></div>
+  <div id="fps" hidden></div>
+</div>
+
+<div id="mapWrap" class="panel">
+  <div id="mapBar"><span class="caps">Map</span><button id="mapMin" class="iconbtn" title="Minimise map">–</button></div>
+  <div id="miniSlot"><canvas id="map"></canvas></div>
+</div>
+
+<div id="menu" hidden><div id="menuCard">
+  <div id="menuHead">
+    <div class="title">BITS Pilani <span>· Hyderabad</span></div>
+    <div id="menuNav"><kbd>Q</kbd><div id="menuTabs"></div><kbd>E</kbd></div>
+    <button id="menuClose" class="iconbtn" title="Close (I or Esc)">×</button>
+  </div>
+  <div id="menuBody">
+    <section class="pane" data-pane="map" data-title="Map">
+      <div id="bigSlot"></div>
+      <div id="mapSide">
+        <div><div class="caps">You are</div><div id="mapWhere"></div></div>
+        <div><div class="caps">Key</div>
+          <ul id="legend">
+            <li><i style="background:#e3c9a0"></i>Academic</li>
+            <li><i style="background:#f3f1ea"></i>Hostels</li>
+            <li><i style="background:#ead9bd"></i>Faculty housing</li>
+            <li><i style="background:#d6a79c"></i>Dining, SAC, auditorium</li>
+            <li><i style="background:#8fb0d8"></i>Workshops</li>
+            <li><i style="background:#6c8a45"></i>Sports pitches</li>
+            <li><i style="background:#a2604a"></i>Athletics track</li>
+            <li><i style="background:#3f7d95"></i>Water</li>
+            <li><i style="background:#c9c6bd"></i>Roads</li>
+            <li><i style="background:#8f7a62"></i>Footpaths</li>
+          </ul>
+        </div>
+        <div class="note">Click anywhere on the map to teleport there.</div>
+      </div>
+    </section>
+    <section class="pane" data-pane="places" data-title="Locations"><h2 class="caps">Jump to</h2><div id="places"></div></section>
+    <section class="pane" data-pane="settings" data-title="Settings"><div id="settings"></div></section>
+    <section class="pane" data-pane="controls" data-title="Controls">
+      <div class="keys">
+        <div><span>Move</span><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span></div>
+        <div><span>Look around (double-click locks the pointer)</span><span>Drag mouse</span></div>
+        <div><span>Fly up / down</span><span><kbd>Space</kbd><kbd>Q</kbd></span></div>
+        <div><span>Move faster and show labels</span><span>Hold <kbd>Shift</kbd></span></div>
+        <div><span>Switch between flying and walking</span><span><kbd>F</kbd></span></div>
+        <div><span>Midday, golden hour, night</span><span><kbd>T</kbd></span></div>
+        <div><span>Graphics quality</span><span><kbd>G</kbd></span></div>
+        <div><span>Labels: hold Shift, always, off</span><span><kbd>L</kbd></span></div>
+        <div><span>Open the menu / open it on the map</span><span><kbd>I</kbd><kbd>M</kbd></span></div>
+        <div><span>Previous / next tab</span><span><kbd>Q</kbd><kbd>E</kbd></span></div>
+        <div><span>Hide the interface</span><span><kbd>H</kbd></span></div>
+      </div>
+      <div id="stats"></div>
+    </section>
+  </div>
+  <div id="menuFoot"><span><kbd>Q</kbd><kbd>E</kbd> Switch tab</span><span><kbd>1</kbd>–<kbd>4</kbd> Jump to tab</span><span><kbd>Esc</kbd> Close</span></div>
+</div></div>
 <script type="module" src="/src/main.js"></script>
 </body>
 </html>

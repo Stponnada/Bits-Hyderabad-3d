@@ -52,16 +52,17 @@ export const STYLES = {
     win: { w: 1.2, h: 2.2, sill: 0.8, panes: 1 }, top: '#cfc4a8', sparse: true,
   },
   hostel: {
-    bayW: 3.2, floorH: 3.2, parapet: 0.9, wall: '#f0ede5', band: '#b8564a', bandH: 0.09,
-    win: { w: 1.25, h: 1.3, sill: 1.0, panes: 2 }, lintelLine: '#b8564a', top: '#ebe7de', vent: true,
+    bayW: 3.2, floorH: 3.2, parapet: 0.9, wall: '#f2f0e9', band: '#dcd8cd', bandH: 0.06,
+    win: { w: 1.25, h: 1.3, sill: 1.0, panes: 2 }, surround: '#b8482e', top: '#ebe7de', vent: true,
   },
   housing: {
     bayW: 3.6, floorH: 3.1, parapet: 0.9, wall: '#eee3cb', band: '#b96d48', bandH: 0.16,
     win: { w: 1.5, h: 1.35, sill: 0.95, panes: 2 }, balcony: true, top: '#e6dac0',
   },
+  // faculty apartment towers: cream / peach render with terracotta-orange balcony fronts
   apartment: {
-    bayW: 3.6, floorH: 3.1, parapet: 1.0, wall: '#f1efe9', band: '#a9b0b3', bandH: 0.14,
-    win: { w: 1.6, h: 1.4, sill: 0.9, panes: 2 }, balcony: true, top: '#e3e0d8',
+    bayW: 3.6, floorH: 3.1, parapet: 1.0, wall: '#ead4b2', band: '#d9bf98', bandH: 0.12,
+    win: { w: 1.6, h: 1.4, sill: 0.9, panes: 2 }, balcony: true, balconyCol: '#d07a42', top: '#e4cba6',
   },
   civic: {
     bayW: 4.0, floorH: 4.2, parapet: 0.9, wall: '#ece4d1', band: '#d2713a', bandH: 0.22,
@@ -70,6 +71,27 @@ export const STYLES = {
   workshop: {
     bayW: 5.0, floorH: 4.6, parapet: 0.6, wall: '#e7e3d7', band: '#6f8fb3', bandH: 0.2,
     win: { w: 3.4, h: 1.1, sill: 2.9, panes: 4 }, top: '#dedacd',
+  },
+  mess: {
+    bayW: 4.0, floorH: 4.6, parapet: 0.5, wall: '#efe6cf', band: '#efe6cf', bandH: 0,
+    win: { w: 3.6, h: 2.6, sill: 0.9, panes: 2 }, top: '#efe6cf', glassBand: true, topLine: '#4f86c6',
+  },
+  sac: {
+    bayW: 4.4, floorH: 4.2, parapet: 0.9, wall: '#eadfc8', band: '#ddd1b8', bandH: 0.08,
+    win: { w: 1.7, h: 1.5, sill: 1.1, panes: 2 }, top: '#e4d8c0',
+  },
+  nab: {
+    bayW: 4.4, floorH: 3.9, parapet: 0.6, wall: '#f1f2f3', band: '#e3e6e8', bandH: 0.12,
+    win: { w: 1.3, h: 2.6, sill: 0.6, panes: 1 }, top: '#ffffff', nab: true,
+  },
+  hut: {
+    bayW: 3.0, floorH: 3.0, parapet: 0.25, wall: '#6f4c36', band: '#4a3224', bandH: 0.12,
+    win: { w: 1.6, h: 1.2, sill: 0.9, panes: 2 }, top: '#5c3f2d',
+  },
+  // tall single-storey cream service halls (pump house / stores north of the pool)
+  service: {
+    bayW: 4.2, floorH: 5.0, parapet: 0.5, wall: '#e4d2ae', band: '#d9c6a0', bandH: 0.08,
+    win: { w: 0.75, h: 0.6, sill: 3.7, panes: 1 }, top: '#e9dcc0',
   },
   kiosk: {
     bayW: 3.0, floorH: 3.0, parapet: 0.3, wall: '#e9e1cf', band: '#d2713a', bandH: 0.18,
@@ -121,6 +143,24 @@ export function facade(key, levels, { windows = true, emissive = false } = {}) {
       for (let b = 0; b < BAYS; b++) {
         const x0 = b * PX;
         if (!windows) continue;
+        if (st.nab) {
+          const gl = () => { const q = g.createLinearGradient(0, y0, 0, y0 + fh); q.addColorStop(0, '#2b3b4a'); q.addColorStop(1, '#6f8fae'); return q; };
+          const wx0 = x0 + PX * 0.3, wy0 = y0 + fh * 0.14, ww0 = PX * 0.3, wh0 = fh * 0.72;
+          if (emissive) { if (r() < 0.35) { g.fillStyle = '#ffe7b8'; g.globalAlpha = 0.5 + r() * 0.4; g.fillRect(wx0, wy0, ww0, wh0); g.globalAlpha = 1; } continue; }
+          if (f === 0) {            // rubble-stone base with dark-framed glazing
+            g.fillStyle = '#4c4b46'; g.fillRect(x0, y0, PX, fh);
+            for (let y = y0; y < y0 + fh; y += 15) { let x = x0 - r() * 14; while (x < x0 + PX) { const bw = 14 + r() * 18, v = 122 + r() * 48; g.fillStyle = `rgb(${v},${v},${v * 0.95})`; g.fillRect(Math.max(x0, x + 1), y + 1, Math.min(bw - 2, x0 + PX - x - 1), 13); x += bw; } }
+            g.fillStyle = '#23272e'; g.fillRect(x0 + PX * 0.2, y0 + fh * 0.1, PX * 0.6, fh * 0.9);
+            g.fillStyle = gl(); for (const k of [0.23, 0.52]) g.fillRect(x0 + PX * k, y0 + fh * 0.16, PX * 0.26, fh * 0.76);
+          } else {                  // white panels, a tall window with dark spandrels, a projecting fin
+            g.strokeStyle = 'rgba(120,125,130,0.45)'; g.lineWidth = 1.5; g.strokeRect(x0 + PX * 0.66, y0 + fh * 0.12, PX * 0.3, fh * 0.76); g.strokeRect(x0 + PX * 0.04, y0 + fh * 0.12, PX * 0.2, fh * 0.76);
+            g.fillStyle = '#23272e'; g.fillRect(wx0 - 4, y0, ww0 + 8, fh);
+            g.fillStyle = gl(); g.fillRect(wx0, wy0 + fh * 0.1, ww0, wh0 - fh * 0.2);
+            g.fillStyle = '#e9ecee'; g.fillRect(wx0, wy0 + wh0 * 0.5, ww0, 3); g.fillRect(wx0 + ww0 / 2 - 1, wy0 + fh * 0.1, 3, wh0 - fh * 0.2);
+            g.fillStyle = '#ffffff'; g.fillRect(x0 + PX * 0.265, y0, PX * 0.022, fh); g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(x0 + PX * 0.287, y0, 5, fh);
+          }
+          continue;
+        }
         if (st.sparse && (b + f) % 2 === 1) continue;
         const ww = st.win.w * pxm, wh = st.win.h * pxm;
         const wx = x0 + (PX - ww) / 2;
@@ -149,6 +189,22 @@ export function facade(key, levels, { windows = true, emissive = false } = {}) {
           g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(ox, oy, ow, 5);
           continue;
         }
+        if (st.glassBand) {
+          if (f === 0) {      // timber doors under the overhang
+            g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(x0, y0, PX, fh * 0.16);
+            g.fillStyle = '#7a4a2c'; g.fillRect(x0 + PX * 0.14, y0 + fh * 0.34, PX * 0.72, fh * 0.66);
+            const gl = g.createLinearGradient(0, y0, 0, y0 + fh); gl.addColorStop(0, '#1b2830'); gl.addColorStop(1, '#3d5563');
+            g.fillStyle = gl; for (const k of [0.19, 0.53]) g.fillRect(x0 + PX * k, y0 + fh * 0.4, PX * 0.28, fh * 0.42);
+          } else {            // continuous band of blue glazing
+            const by = y0 + fh * 0.14, bh = fh * 0.66;
+            const gl = g.createLinearGradient(0, by, 0, by + bh); gl.addColorStop(0, '#6ea3d8'); gl.addColorStop(0.5, '#3b6fa8'); gl.addColorStop(1, '#2c5486');
+            g.fillStyle = gl; g.fillRect(x0, by, PX, bh);
+            g.fillStyle = 'rgba(255,255,255,0.10)'; g.fillRect(x0 + PX * 0.1, by + bh * 0.1, PX * 0.3, bh * 0.35);
+            g.fillStyle = '#e9eef2'; g.fillRect(x0, by + bh / 2 - 2, PX, 4); for (const k of [0, 0.5]) g.fillRect(x0 + PX * k - 2, by, 4, bh);
+          }
+          continue;
+        }
+        if (st.surround) { g.fillStyle = st.surround; g.fillRect(wx - 10, wy - 10, ww + 20, wh + 22); g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(wx - 10, wy - 10, ww + 20, 5); }
         // frame + glass
         g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(wx - 2, wy - 2, ww + 4, wh + 7);
         g.fillStyle = '#f4f1ea'; g.fillRect(wx, wy, ww, wh);
@@ -176,9 +232,9 @@ export function facade(key, levels, { windows = true, emissive = false } = {}) {
         if (st.lintelLine) { g.fillStyle = st.lintelLine; g.fillRect(x0, wy - 12, PX, 2); }
         if (st.balcony && b % 2 === 0) {
           const by = y0 + fh - 1.05 * pxm;
-          g.fillStyle = shade(st.wall, 0.93); g.fillRect(x0 + 6, by, PX - 12, 1.05 * pxm - 3);
+          g.fillStyle = shade(st.balconyCol || st.wall, 0.93); g.fillRect(x0 + 6, by, PX - 12, 1.05 * pxm - 3);
           g.fillStyle = 'rgba(0,0,0,0.2)'; g.fillRect(x0 + 6, by + 1.05 * pxm - 5, PX - 12, 4);
-          g.fillStyle = shade(st.wall, 0.78); g.fillRect(x0 + 6, by, PX - 12, 3);
+          g.fillStyle = shade(st.balconyCol || st.wall, 0.78); g.fillRect(x0 + 6, by, PX - 12, 3);
         }
       }
       if (!emissive) {
@@ -194,6 +250,7 @@ export function facade(key, levels, { windows = true, emissive = false } = {}) {
       g.fillStyle = st.top; g.fillRect(0, 0, W, ph);
       g.fillStyle = st.band; g.fillRect(0, ph - 3, W, 4);
       g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(0, 0, W, 3);
+      if (st.topLine) { g.fillStyle = st.topLine; g.fillRect(0, 0, W, 7); }
       // grime
       const gg = g.createLinearGradient(0, 0, 0, H);
       gg.addColorStop(0, 'rgba(60,50,30,0.10)'); gg.addColorStop(0.15, 'rgba(60,50,30,0)');
@@ -238,7 +295,7 @@ export function roadTex(kind) {
   // u across the road (0..1), v along (one tile = 8 m)
   return canvasTex(256, 512, (g, w, h) => {
     const r = rng(kind.length + 5);
-    const base = { main: '#96948c', road: '#93918a', service: '#8f8d86', asphalt: '#4b4c50' }[kind] || '#aaa';
+    const base = { main: '#96948c', road: '#93918a', service: '#8f8d86', asphalt: '#606165' }[kind] || '#aaa';
     g.fillStyle = base; g.fillRect(0, 0, w, h);
     speckle(g, w, h, r, 9000, 0.09);
     // tyre-darkened lanes
@@ -361,6 +418,12 @@ export function courtTex(sport, name) {
         g.beginPath(); g.arc(W / 2, by + s * 190, 80, s > 0 ? 0 : Math.PI, s > 0 ? Math.PI : 2 * Math.PI); g.stroke();
         g.beginPath(); g.arc(W / 2, by + s * 50, 210, s > 0 ? 0.15 : Math.PI + 0.15, s > 0 ? Math.PI - 0.15 : 2 * Math.PI - 0.15); g.stroke();
       }
+    } else if (sport.startsWith('volleyball_turf')) {
+      g.fillStyle = '#3f8a50'; g.fillRect(0, 0, W, H);
+      speckle(g, W, H, r, 12000, 0.06);
+      g.fillStyle = '#4f9a5c'; g.fillRect(m * 2, m * 2, W - 4 * m, H - 4 * m);
+      line('#f4f4ee', 7); g.strokeRect(m * 2, m * 2, W - 4 * m, H - 4 * m);
+      g.beginPath(); g.moveTo(m * 2, H / 2); g.lineTo(W - m * 2, H / 2); g.moveTo(m * 2, H / 2 - 150); g.lineTo(W - m * 2, H / 2 - 150); g.moveTo(m * 2, H / 2 + 150); g.lineTo(W - m * 2, H / 2 + 150); g.stroke();
     } else if (sport.startsWith('volleyball') || sport.startsWith('kho')) {
       g.fillStyle = '#b89b6e'; g.fillRect(0, 0, W, H);
       speckle(g, W, H, r, 12000, 0.08);
@@ -395,16 +458,16 @@ export function courtTex(sport, name) {
   }, { repeat: false });
 }
 
-export function textSprite(text, { size = 44, color = '#fff', bg = 'rgba(18,22,30,0.72)', pad = 14 } = {}) {
+export function textSprite(text, { size = 44, color = '#fff', bg = '#000', pad = 14 } = {}) {
   const c = document.createElement('canvas');
   const g = c.getContext('2d');
-  const font = `600 ${size}px "Avenir Next", "Segoe UI", system-ui, sans-serif`;
+  const font = `600 ${size}px Satoshi, "Avenir Next", system-ui, sans-serif`;
   g.font = font;
   const w = Math.ceil(g.measureText(text).width) + pad * 2, h = size + pad * 1.4;
   c.width = w; c.height = h;
   g.font = font;
   g.fillStyle = bg;
-  g.beginPath(); g.roundRect(0, 0, w, h, h / 2.6); g.fill();
+  g.fillRect(0, 0, w, h);
   g.fillStyle = color; g.textBaseline = 'middle'; g.textAlign = 'center';
   g.fillText(text, w / 2, h / 2 + 2);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;

@@ -6,8 +6,8 @@ import { STYLES, facade, plainTex, rng, curtainTex } from './textures.js';
 
 const KIND_STYLE = {
   academic: 'academic', auditorium: 'auditorium', hostel: 'hostel', housing: 'housing', apartment: 'apartment',
-  mess: 'civic', retail: 'civic', sac: 'civic', medical: 'civic', generic: 'civic', lab: 'civic', temple: 'civic',
-  utility: 'kiosk', kiosk: 'kiosk', workshop: 'workshop',
+  mess: 'mess', nab: 'nab', retail: 'civic', sac: 'sac', medical: 'civic', generic: 'civic', lab: 'civic', temple: 'civic',
+  utility: 'kiosk', kiosk: 'kiosk', workshop: 'workshop', service: 'service',
 };
 const ROOF = {
   workshop: 'roof_blue', sac: 'roof_pink', mess: 'metal_pink', auditorium: 'metal_pink', lab: 'roof_white', apartment: 'roof_white',
@@ -17,6 +17,7 @@ export function buildBuildings(data, scene) {
   const batches = new Map();   // key -> Geo
   const mats = new Map();
   const nightMats = [];
+  let washroomDbg = null;   // TEMP diagnostic, see loop below
   const G = (key) => { if (!batches.has(key)) batches.set(key, new Geo()); return batches.get(key); };
 
   const wallMat = (style, levels, windows) => {
@@ -42,6 +43,7 @@ export function buildBuildings(data, scene) {
   simple('roof_blue', () => plainTex('#6f95c4', 7, 0.05, 8), { roughness: 0.55, metalness: 0.3 });
   simple('roof_pink', () => plainTex('#c79a98', 8, 0.05, 8), { roughness: 0.6, metalness: 0.2 });
   simple('metal_pink', () => plainTex('#c4928c', 9, 0.05, 8), { roughness: 0.55, metalness: 0.25 });
+  simple('metal_lilac', () => plainTex('#b9b5c8', 14, 0.05, 8), { roughness: 0.55, metalness: 0.25 });
   simple('terracotta', () => plainTex('#a66756', 10, 0.07, 6), { roughness: 0.8 });
   simple('glass', () => plainTex('#2f5560', 12, 0.03, 4), { roughness: 0.15, metalness: 0.6 });
   simple('orange', () => plainTex('#d2622c', 13, 0.04));
@@ -133,7 +135,18 @@ export function buildBuildings(data, scene) {
   }
 
   for (const b of data.buildings) {
-    const style = KIND_STYLE[b.kind] || 'civic';
+    // TEMP diagnostic (revert after user confirms sheds 1/2/3): render the
+    // washroom guess (id 360815486) as a solid blue box instead of kiosk style
+    if (b.id === 360815486) {
+      const H = heightOf(b);
+      footprints.push({ outer: b.outer, bb: bbox(b.outer), holes: b.holes, h: H });
+      washroomDbg = { outer: b.outer, H };
+      continue;
+    }
+    const bc = centroid(b.outer);
+    // the food kiosks under the trees by Shankar Bhavan are dark timber huts
+    const hut = b.kind === 'kiosk' && bc[0] > 180 && bc[0] < 245 && bc[1] > -120 && bc[1] < -55;
+    const style = hut ? 'hut' : KIND_STYLE[b.kind] || 'civic';
     const st = STYLES[style];
 
     if (b.kind === 'library') {
@@ -176,10 +189,10 @@ export function buildBuildings(data, scene) {
     }
     const hip = (b.kind === 'mess' || b.kind === 'auditorium') && b.holes.length === 0;
     const par = hip ? 0 : st.parapet;
-    walls(b.outer, 0, H, par, false, style, b.levels, b.kind !== 'utility');
+    walls(b.outer, 0, H, par, false, style, b.levels, b.kind !== 'utility' && !hut);
     for (const h of b.holes) walls(h, 0, H, par, true, style, b.levels);
     if (hip) {
-      hipRoof(b.outer, H, b.kind === 'auditorium' ? 7.5 : 5.5, 'metal_pink');
+      hipRoof(b.outer, H, b.kind === 'auditorium' ? 7.5 : 3.6, b.kind === 'auditorium' ? 'metal_pink' : 'metal_lilac');
     } else {
       addFlatPoly(G(ROOF[b.kind] || 'roof_concrete'), b.outer, b.holes, H);
     }
@@ -206,13 +219,19 @@ export function buildBuildings(data, scene) {
       if (b.kind === 'academic') place(Math.round(area / 260), 6, 4, props.panels);
       if (b.kind === 'hostel') place(Math.round(area / 700), 6, 4, props.panels);
       place(Math.max(1, Math.round(area / 1100)), 2, 2, props.tanks);
-      place(Math.max(1, Math.round(area / 1600)), 4.5, 5.5, props.heads, { style });
+      place(Math.max(1, Math.round(area / (b.kind === 'academic' ? 900 : 1600))), b.kind === 'academic' ? 6.6 : 4.5, b.kind === 'academic' ? 6.6 : 5.5, props.heads, { style });
     }
   }
 
   // stair head-rooms as real boxes in the blank wall material of their style
   for (const h of props.heads) {
-    const key = h.style === 'academic' ? 'terracotta' : wallMat(h.style, 1, false);
+    if (h.style === 'academic') {
+      // stepped terracotta pavilion on a stone base, as on the real academic blocks
+      G(wallMat('academic', 1, false)).box(h.x, h.z, 6.4, 6.4, h.y, h.y + 2.7, h.ang, 0.2);
+      [[7.2, 0.55], [5.6, 0.5], [3.9, 0.5]].forEach(([w, t], i) => G('terracotta').box(h.x, h.z, w, w, h.y + 2.7 + i * 0.5, h.y + 2.7 + i * 0.5 + t, h.ang, 0.25));
+      continue;
+    }
+    const key = wallMat(h.style, 1, false);
     G(key).box(h.x, h.z, 4.5, 5.5, h.y, h.y + 2.9, h.ang, 0.2);
   }
 
@@ -242,6 +261,17 @@ export function buildBuildings(data, scene) {
     tm.castShadow = true; group.add(tm);
   }
   academicDetails.finish(group);
+  if (washroomDbg) {
+    // TEMP diagnostic blue box for the washroom guess
+    const p = washroomDbg.outer, cc = centroid(p);
+    const e1 = [p[1][0] - p[0][0], p[1][1] - p[0][1]], e2 = [p[2][0] - p[1][0], p[2][1] - p[1][1]];
+    const l1 = Math.hypot(...e1), l2 = Math.hypot(...e2);
+    const g = new Geo();
+    if (l1 >= l2) g.box(cc[0], cc[1], l1, l2, 0, washroomDbg.H, Math.atan2(e1[1], e1[0]));
+    else g.box(cc[0], cc[1], l2, l1, 0, washroomDbg.H, Math.atan2(e2[1], e2[0]));
+    const m = new THREE.Mesh(g.build(), new THREE.MeshStandardMaterial({ color: '#2f6bff', roughness: 0.7 }));
+    m.castShadow = true; m.receiveShadow = true; group.add(m);
+  }
   scene.add(group);
   return { group, footprints, labels, nightMats, heightOf };
 }

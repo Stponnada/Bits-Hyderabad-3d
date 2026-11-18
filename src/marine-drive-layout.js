@@ -102,7 +102,9 @@ export function arrangeMarineTrees(trees,data) {
       if(!valid(x,z))continue;
       Object.assign(t,{x,z});occupied.push(t);placed=true;break;
     }
-    if(!placed)throw new Error('No clear woodland position for Marine Drive tree');
+    // Out of clear woodland positions: leave the remaining trees where they were surveyed
+    // rather than failing the whole scene when the tree data changes.
+    if(!placed){console.warn(`Marine Drive: ${displaced.length-i} displaced trees kept in place`);break;}
   }
   layout.relocated=displaced.length;
   layout.violations=trees.filter(t=>t.kind!=='palm'&&marineReserved(t.x,t.z)).length;

@@ -37,8 +37,13 @@ export function createContactShading(renderer, scene, camera) {
   output.renderToScreen = true;
   renderer.info.autoReset = false;
 
+  let aoOn = true, isNight = false;
+  const strength = () => { output.uniforms.contactStrength.value = aoOn ? (isNight ? 0.22 : 0.38) : 0; };
   return {
-    setNight(night) { output.uniforms.contactStrength.value = night ? 0.22 : 0.38; },
+    setNight(night) { isNight = night; strength(); },
+    // quality controls: ambient occlusion can be skipped and the multisample count lowered
+    setAO(on) { aoOn = on; strength(); },
+    setSamples(n) { const v = Math.min(n, renderer.capabilities.maxSamples); if (target.samples !== v) { target.samples = v; target.dispose(); } },
     resize(width, height) {
       const ratio = renderer.getPixelRatio();
       const w = Math.round(width * ratio), h = Math.round(height * ratio);
@@ -52,7 +57,7 @@ export function createContactShading(renderer, scene, camera) {
       renderer.info.reset();
       renderer.setRenderTarget(target);
       renderer.render(scene, camera);
-      ao.render(renderer, null, target);
+      if (aoOn) ao.render(renderer, null, target);
       output.render(renderer, null, target);
       // Labels use a separate layer so contact shading never dirties the text
       // or mistakes a screen-facing name plate for world geometry.

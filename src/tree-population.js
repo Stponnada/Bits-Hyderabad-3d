@@ -14,6 +14,8 @@ export function createOriginalTrees(data, noTreeZones, extraPlants) {
     const inside = pip(t[0], t[1], data.boundary);
     if (kind === 'broad' && !inside && distToPoly(t[0], t[1], data.boundary) > 60) kind = 'far';
     if (inside && kind === 'tall' && r() < 0.18) kind = 'conifer';
+    // Local dry-cover overrides must not perturb the seeded random stream.
+    if (t[4] === 'scrub') kind = 'scrub';
     list.push({ x: t[0], z: t[1], s: t[2] * (0.72 + r() * 0.3), kind });
   }
   // royal palms along Marine Drive (the sweep from the gate roundabout to the academic block)

@@ -8,10 +8,21 @@ import bushPreset from './vendor/ez-tree/presets/bush_1.json';
 import { animateMaterial } from './detailed-trees.js';
 import { rng } from './textures.js';
 import { FOREST, pilotForestDistance, forestAtmosphereDistance } from './forest-zone.js';
-import { buildPerimeterForest, updatePerimeterForest, perimeterForestInfo } from './perimeter-forest.js';
+import { buildPerimeterForest, updatePerimeterForest, perimeterForestInfo, setPerimeterDetail } from './perimeter-forest.js';
 import { bakeForestProxy } from './forest-proxy.js';
 
 let root = null;
+// Quality control. The whole stand shares one level of detail, so near the gate every tree
+// in it is drawn at full branch-and-leaf resolution; lower presets start from a coarser level
+// and can drop the stand's shadow casting, which is the single largest cost on Marine Drive.
+const forestLods = [], forestCasters = [];
+let forestMinLevel = 0, forestShadows = true;
+export function setForestDetail(minLevel, shadows) {
+  forestMinLevel = minLevel; forestShadows = shadows;
+  setPerimeterDetail([1, 0.75, 0.5, 0.3][minLevel] ?? 0.3);
+  for (const lod of forestLods) lod.levels.forEach((l, i) => { l.userData ||= {}; if (l.base === undefined) l.base = l.distance; l.distance = i <= minLevel ? 0 : l.base; });
+  for (const m of forestCasters) m.castShadow = shadows;
+}
 let pilotCover = null;
 const pathPoints = [];
 const windTime = { value: 0 };
@@ -137,7 +148,7 @@ export async function buildForest(scene, height, allTrees, allOriginals, rendere
       mesh.setMatrixAt(i, object.matrix);
       if (r.color) mesh.setColorAt(i, new THREE.Color(r.color));
     });
-    mesh.castShadow = shadow; mesh.receiveShadow = true;
+    mesh.castShadow = shadow && forestShadows; mesh.receiveShadow = true; if (shadow) forestCasters.push(mesh);
     if (depth) mesh.customDepthMaterial = depth;
     mesh.computeBoundingSphere(); mesh.boundingSphere.radius += 0.2; parent.add(mesh);
     return mesh;
@@ -170,7 +181,7 @@ export async function buildForest(scene, height, allTrees, allOriginals, rendere
       x: t.x - FOREST.x, y: height(t.x, t.z) - 0.04, z: t.z - FOREST.z,
       scale: t.s * (pale ? 0.25 : 0.30) * (0.9 + random() * 0.25), rot: t.rot ?? random() * Math.PI * 2, lean: (random() - 0.5) * 0.055,
     }));
-    const lod = new THREE.LOD(); lod.position.set(FOREST.x, 0, FOREST.z); root.add(lod);
+    const lod = new THREE.LOD(); lod.position.set(FOREST.x, 0, FOREST.z); root.add(lod); forestLods.push(lod);
     species[variant] = { bark: barkMaterial, leaves: leafMaterial, depth: leafDepth, geometry: [] };
     for (const [distance, detail] of [[0, { sectionStride: 2, leafStride: 2, leafScale: 1.15, billboard: 'single' }],
       [65, { sectionStride: 3, segmentFactor: 0.65, leafStride: 4, leafScale: 1.4, billboard: 'single' }],
@@ -273,7 +284,9 @@ export async function buildForest(scene, height, allTrees, allOriginals, rendere
   window.__perimeterForest = perimeterForestInfo;
 }
 
+let forestApplied = false;
 export function updateForest(camera, now, scene, time) {
+  if (!forestApplied && forestLods.length) { forestApplied = true; setForestDetail(forestMinLevel, forestShadows); }
   if (!root) return;
   windTime.value = now * 0.001;
   const distance = Math.hypot(camera.position.x - FOREST.x, camera.position.z - FOREST.z);

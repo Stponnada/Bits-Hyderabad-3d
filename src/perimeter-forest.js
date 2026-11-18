@@ -131,7 +131,15 @@ function populate(cell) {
   cell.group = group;
 }
 
+// Quality control: scale the distances at which each 96 m section of woodland steps down from
+// full branches and leaves to coarser models and finally to baked silhouettes.
+let perimeterScale = 1, perimeterApplied = 0;
+export function setPerimeterDetail(scale) { perimeterScale = scale; perimeterApplied = 0; }
 export function updatePerimeterForest(camera, now, fogDensity) {
+  if (state && perimeterApplied !== perimeterScale) {
+    for (const entry of state.lods) entry.lod.levels.forEach((l) => { if (l.base === undefined) l.base = l.distance; l.distance = l.base * perimeterScale; });
+    perimeterApplied = perimeterScale;
+  }
   if (!state) return;
   const visibleRange = Math.min(2600, 2.8 / Math.max(0.0001, fogDensity));
   for (const entry of state.lods) entry.lod.visible = Math.hypot(camera.x - entry.x, camera.y - 18, camera.z - entry.z) < visibleRange + 90;
