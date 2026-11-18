@@ -1,0 +1,10 @@
+// Cloudflare deploy: a static-assets Worker serving the Vite build output.
+// Having this file stops `wrangler deploy` from trying to auto-configure the project
+// (which needs Vite 6+); the build itself is `npm run build` into dist/.
+{
+  "name": "bits-hyderabad-3d",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist"
+  }
+}
