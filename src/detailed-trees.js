@@ -10,6 +10,9 @@ const DETAIL_RANGE = 95;
 const MID_RANGE = 230;
 const clock = { value: 0 };
 const lodGroups = [];
+let detailScale = 1, detailShadows = true;
+const detailCasters = [];
+export function setDetailScale(s, shadows = true) { detailScale = s; detailShadows = shadows; for (const m of detailCasters) m.castShadow = shadows; }
 const farMeshes = [];
 // Avoid singular normal matrices while making the inactive far instances
 // much smaller than a pixel. Their full bounds are retained for later restores.
@@ -223,7 +226,7 @@ export function buildDetailedTrees(trees, scene, height) {
     for (const [part, material] of [['bark', barkMaterial], ['leaves', leafMaterial]]) {
       const mesh = new THREE.InstancedMesh(parts[part], material, list.length);
       list.forEach((tree, i) => mesh.setMatrixAt(i, tree.matrix));
-      mesh.castShadow = true; mesh.receiveShadow = quality === 'near';
+      mesh.castShadow = detailShadows; detailCasters.push(mesh); mesh.receiveShadow = quality === 'near';
       if (part === 'leaves') mesh.customDepthMaterial = depth;
       mesh.computeBoundingSphere(); mesh.boundingSphere.radius += 0.2;
       result.add(mesh);
@@ -247,8 +250,8 @@ export function updateDetailedTrees(camera, now, visibleRange = Infinity) {
   const changed = new Set();
   for (const cell of lodGroups) {
     const distance = camera.distanceTo(cell.centre) - cell.radius;
-    const stage = distance < DETAIL_RANGE + (cell.stage === 'near' ? 18 : 0) ? 'near'
-      : distance < MID_RANGE + (cell.stage === 'mid' ? 25 : 0) ? 'mid' : 'far';
+    const stage = distance < DETAIL_RANGE * detailScale + (cell.stage === 'near' ? 18 : 0) ? 'near'
+      : distance < MID_RANGE * detailScale + (cell.stage === 'mid' ? 25 : 0) ? 'mid' : 'far';
     if (stage === cell.stage) continue;
     if (stage !== 'far' && !cell[stage]) cell[stage] = cell.makeDetail(cell.list, stage);
     if (cell.near) cell.near.visible = stage === 'near';

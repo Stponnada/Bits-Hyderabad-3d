@@ -5,6 +5,8 @@ import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rng, canvasTex } from './textures.js';
 import { buildDetailedTrees, updateDetailedTrees } from './detailed-trees.js';
 import { createOriginalTrees, createCompanionTrees } from './tree-population.js';
+import { inBarrier } from './barrier.js';
+import { gateClear } from './world.js';
 
 // shared uniform: fake light transmission through foliage (set per time of day)
 export const foliageGlow = { value: 0.16 };
@@ -249,13 +251,29 @@ export const noTreeZones = [];       // [x, z, radius]
 const SHELL_RANGE = 330;
 const shellMeshes = [];
 const originalMeshes = [];
+// Level of detail: each 240 m cell of trees is drawn either in full (trunks, branches, leafy
+// shells: about ten draw calls and several hundred triangles a tree) or, beyond `near`, as one
+// instanced batch of 26-triangle silhouettes. At that distance a crown is a few pixels across.
+const treeCells = new Map();
+const ranges = { near: 260, shell: SHELL_RANGE };
+export function setTreeRanges(near, shell) { ranges.near = near; ranges.shell = shell; }
+const FAR_SHAPE = { palm: [0.55, 1.55], conifer: [0.6, 1.9], tall: [0.7, 1.45], scrub: [1.0, 0.5], broad: [1, 1], far: [1, 1] };
+function farGeometry() {
+  const crown = new THREE.IcosahedronGeometry(2.7, 0); crown.scale(1, 0.72, 1); crown.translate(0, 5.3, 0);
+  paint(crown, '#789f48', '#3d5c2c', 3.4, 7.2);
+  const trunk = new THREE.CylinderGeometry(0.18, 0.26, 3.8, 3, 1, true); trunk.translate(0, 1.9, 0); paint(trunk, '#5f4f40', '#5f4f40', 0, 0);
+  return merge([{ geo: crown, up: 0.9 }, { geo: trunk }]);
+}
 export function updatePlantLOD(cam, now, visibleRange = Infinity) {
   updateDetailedTrees(cam, now, visibleRange);
-  for (const m of originalMeshes) m.visible = cam.distanceTo(m.boundingSphere.center) - m.boundingSphere.radius < visibleRange;
-  for (const m of shellMeshes) {
-    const c = m.userData.c;
-    m.visible = cam.y < 220 && Math.hypot(c[0] - cam.x, c[1] - cam.z) < SHELL_RANGE
-      && cam.distanceTo(m.boundingSphere.center) - m.boundingSphere.radius < visibleRange;
+  for (const cell of treeCells.values()) {
+    const dist = Math.hypot(cell.c[0] - cam.x, cell.c[1] - cam.z);
+    // hysteresis so cells do not flicker between levels while you stand near the threshold
+    cell.isNear = dist < ranges.near + (cell.isNear ? 30 : 0) && cam.y < 420;
+    const inRange = dist - 170 < visibleRange;
+    if (cell.far) cell.far.visible = !cell.isNear && inRange;
+    for (const m of cell.near) m.visible = cell.isNear && inRange;
+    for (const m of cell.shells) m.visible = cell.isNear && inRange && cam.y < 220 && dist < ranges.shell;
   }
 }
 
@@ -263,7 +281,9 @@ export function buildTrees(data, scene, height) {
   const forestEnabled = new URLSearchParams(location.search).get('trees') !== 'original';
   const G = plantGeometries();
   const mats = plantMaterials();
-  const { trees: list, random: r } = createOriginalTrees(data, noTreeZones, extraPlants);
+  // nothing beyond the virtual wall is drawn (barrier.js) — that includes the distant scrub ring
+  const { trees: all, random: r } = createOriginalTrees(data, noTreeZones, extraPlants);
+  const list = all.filter((t) => inBarrier(t.x, t.z) && !gateClear(t.x, t.z));
   const CH = 240;
   const buckets = new Map();
   for (const t of list) {
@@ -278,7 +298,7 @@ export function buildTrees(data, scene, height) {
     const [kind, cx, cz] = k.split('|');
     const mx = [], cols = [];
     arr.forEach((t) => {
-      d.position.set(t.x, height(t.x, t.z) - 0.08, t.z);
+      d.position.set(t.x, (t.y ?? height(t.x, t.z)) - 0.08, t.z);
       d.rotation.set(0, t.rot ?? r() * 6.28, 0);
       const w = t.s * (kind === 'palm' || kind === 'conifer' ? 1 : 0.9 + r() * 0.25);
       d.scale.set(w, t.s, w);
@@ -295,13 +315,27 @@ export function buildTrees(data, scene, height) {
       remaining.forEach((source, i) => { im.setMatrixAt(i, mx[source]); im.setColorAt(i, part === 'bark' ? col.set('#ffffff') : cols[source]); });
       im.castShadow = part !== 'shell'; im.receiveShadow = false;
       im.computeBoundingSphere();
-      if (part !== 'shell') originalMeshes.push(im);
-      if (part === 'shell') { im.userData.c = [(+cx + 0.5) * CH, (+cz + 0.5) * CH]; shellMeshes.push(im); }
+      const ck = cx + '|' + cz;
+      if (!treeCells.has(ck)) treeCells.set(ck, { c: [(+cx + 0.5) * CH, (+cz + 0.5) * CH], near: [], shells: [], proxies: [], isNear: false });
+      const cell = treeCells.get(ck);
+      (part === 'shell' ? cell.shells : cell.near).push(im);
+      if (part === Object.keys(G[kind])[0]) remaining.forEach((source) => cell.proxies.push({ m: mx[source], c: cols[source], kind }));
       group.add(im);
     }
   }
+  // one cheap batch per cell for the distance
+  const farGeo = farGeometry(), farMat = mats.solid.clone();
+  farMat.map = null; farMat.onBeforeCompile = mats.solid.onBeforeCompile;
+  const shape = new THREE.Matrix4(), mm = new THREE.Matrix4();
+  for (const cell of treeCells.values()) {
+    if (!cell.proxies.length) continue;
+    const im = new THREE.InstancedMesh(farGeo, farMat, cell.proxies.length);
+    cell.proxies.forEach((p, i) => { const s = FAR_SHAPE[p.kind] || FAR_SHAPE.broad; shape.makeScale(s[0], s[1], s[0]); im.setMatrixAt(i, mm.multiplyMatrices(p.m, shape)); im.setColorAt(i, p.c); });
+    im.castShadow = false; im.receiveShadow = false; im.computeBoundingSphere();
+    cell.far = im; cell.proxies = null; group.add(im);
+  }
   const companions = new URLSearchParams(location.search).get('trees') === 'original'
-    ? [] : createCompanionTrees(data, list, noTreeZones);
+    ? [] : createCompanionTrees(data, list, noTreeZones).filter((t) => inBarrier(t.x, t.z) && !gateClear(t.x, t.z));
   addTreeGroundDetail([...list, ...companions]);
   const forestTrees = companions.filter(isForestTree);
   buildDetailedTrees(companions.filter((t) => !isForestTree(t)), scene, height);

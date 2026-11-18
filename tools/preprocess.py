@@ -166,7 +166,7 @@ manual(2535, 2277, 24, 40, 'utility', 1)
 manual(1722, 1258, 22, 72, 'lab', 2, ang=math.radians(23))
 manual(1748, 1250, 22, 72, 'lab', 2, ang=math.radians(23))
 manual(1265, 1478, 40, 36, 'utility', 2)
-manual(1562, 1806, 62, 26, 'lab', 2)
+manual(1562, 1806, 62, 26, 'bikepark', 2)
 manual(1232, 1655, 34, 56, 'utility', 1)
 
 # classify
@@ -244,6 +244,35 @@ for b in buildings:
     holes = [h if area(h) > 0 else h[::-1] for h in b['holes']]
     bout.append({'id': b['id'], 'name': b['name'], 'kind': b['kind'], 'levels': b['levels'],
                  'outer': rnd(o), 'holes': [rnd(h) for h in holes], 'on': b['on']})
+
+# Site survey: these two OSM footprints are open 2-wheeler parking canopies
+# (white canvas roof on poles over a slightly raised concrete slab), not solid
+# buildings. Keep them out of the extruded buildings; they are emitted as
+# bikepark areas below and modelled as open sheds at runtime (src/bikepark.js).
+BIKE_CANOPY_IDS = {360815484}
+canopies = [b for b in bout if b['id'] in BIKE_CANOPY_IDS or b['kind'] == 'bikepark']
+bout = [b for b in bout if b['id'] not in BIKE_CANOPY_IDS and b['kind'] != 'bikepark']
+
+# Site survey: the northern canopy (OSM 360815486) is actually a small
+# washroom block. Model it as a 1-level utility building parallel to the wind
+# tunnel and 1/5 of its width, centred on the mapped footprint.
+_wt = next(b for b in bout if b['id'] == 1393014936)['outer']
+_e1 = (_wt[1][0] - _wt[0][0], _wt[1][1] - _wt[0][1])
+_e2 = (_wt[2][0] - _wt[1][0], _wt[2][1] - _wt[1][1])
+_long = _e1 if math.hypot(*_e1) >= math.hypot(*_e2) else _e2
+_short = _e2 if math.hypot(*_e1) >= math.hypot(*_e2) else _e1
+_wt_ang = math.atan2(_long[1], _long[0])
+_wt_wid = math.hypot(*_short) / 5
+for b in bout:
+    if b['id'] == 360815486:
+        _cx, _cz = centroid(b['outer'])
+        _ux, _uz = math.cos(_wt_ang), math.sin(_wt_ang)
+        _proj = sorted((p[0] - _cx) * _ux + (p[1] - _cz) * _uz for p in b['outer'])
+        _hl, _hw = (_proj[-1] - _proj[0]) / 2, _wt_wid / 2
+        _vx, _vz = -_uz, _ux
+        b['outer'] = rnd([[_cx + _ux * u + _vx * v, _cz + _uz * u + _vz * v]
+                          for u, v in ((-_hl, -_hw), (_hl, -_hw), (_hl, _hw), (-_hl, _hw))])
+        b.update(kind='utility', levels=1, name='', holes=[])
 
 # ---------------------------------------------------------------------- roads
 roads = []
@@ -334,6 +363,11 @@ for e in els:
     areas.append({'kind': kind, 'name': t.get('name', ''), 'sport': t.get('sport', ''),
                   'surface': t.get('surface', ''), 'pts': rnd(pts)})
 
+# open 2-wheeler parking canopies (see BIKE_CANOPY_IDS above): kept as areas so
+# the runtime can model them as sheds instead of extruded buildings
+for b in canopies:
+    areas.append({'kind': 'bikepark', 'name': '', 'pts': b['outer']})
+
 # central academic quad lawn (not mapped as an area)
 print('buildings', len(bout), 'roads', len(roads), 'areas', len(areas))
 
@@ -356,21 +390,22 @@ grass_f = np.asarray(Image.fromarray((grass * 255).astype(np.uint8)).filter(Imag
 soil_f = np.asarray(Image.fromarray((soil * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(3.0))).astype(np.float32) / 255
 
 # exclusion mask at 1 m: buildings, roads, pitches, water
+# (bikepark canopies still exclude trees even though they are open sheds)
 SX = (x1 - x0) / W; SZ = (z1 - z0) / H
 def topx(p):
     return ((p[0] - x0) / SX, (p[1] - z0) / SZ)
 ex = Image.new('L', (W, H), 0)
 dr = ImageDraw.Draw(ex)
-for b in bout:
+for b in bout + canopies:
     if b['on'] is None:
         dr.polygon([topx(p) for p in b['outer']], fill=255, outline=255)
 bld = ex.copy()
-for h_ in [h for b in bout for h in b['holes']]:
+for h_ in [h for b in bout + canopies for h in b['holes']]:
     dr.polygon([topx(p) for p in h_], fill=255)
 for r in roads:
     dr.line([topx(p) for p in r['pts']], fill=255, width=max(2, int(round((r['w'] + 3) / SX))))
 for ar in areas:
-    if ar['kind'] in ('pitch', 'water', 'pool', 'track', 'parking', 'nets', 'pooldeck', 'stage', 'plaza'):
+    if ar['kind'] in ('pitch', 'water', 'pool', 'track', 'parking', 'bikepark', 'nets', 'pooldeck', 'stage', 'plaza'):
         dr.polygon([topx(p) for p in ar['pts']], fill=255)
 ex = ex.filter(ImageFilter.MaxFilter(5))
 exa = np.asarray(ex) > 0
@@ -381,29 +416,69 @@ ImageDraw.Draw(inside_mask).polygon([topx(p) for p in boundary], fill=255)
 inside = np.asarray(inside_mask) > 0
 
 # trees ------------------------------------------------------------------
-trees = []
+# Canopy density comes from the 0.6 m imagery: tree crowns are green and either dark or
+# visibly textured (leaf clumps and self-shadow), whereas lawns are green, bright and smooth.
+# The number of trees planted in each cell follows that density, so woodland stays dense,
+# avenues stay as lines of trees, and lawns and playing fields stay open.
+def box(arr, k):
+    c = np.cumsum(np.cumsum(np.pad(arr, ((k + 1, k), (k + 1, k)), mode='edge'), axis=0), axis=1)
+    n = 2 * k + 1
+    return (c[n:, n:] - c[:-n, n:] - c[n:, :-n] + c[:-n, :-n]) / (n * n)
+hi = np.asarray(Image.open(os.path.join(DATA, 'sat18.jpg')).convert('RGB').filter(ImageFilter.GaussianBlur(0.8))).astype(np.float32)
+hb = hi.mean(axis=2); hg = hi[..., 1] - (hi[..., 0] + hi[..., 2]) / 2
+hstd = np.sqrt(np.maximum(box(hb * hb, 4) - box(hb, 4) ** 2, 0))
+cl = lambda v: np.clip(v, 0, 1)
+lawn = cl((hg - 24) / 8) * cl((12 - hstd) / 3)                 # vivid, smooth green: turf
+open_crowns = cl((hg - 3) / 5) * cl((118 - hb) / 22) * cl((hstd - 9) / 8)   # separate crowns with shadow between
+closed = cl((100 - hb) / 12) * cl((hg - 4) / 4)                # closed, dark canopy
+score = np.maximum(open_crowns, closed) * (1 - lawn)
+dens_hi = box(score.astype(np.float32), 5)
+# the z18 mosaic starts one tile east and south of twice the z17 origin
+T17 = [int(v) for v in tile(17.5500, 78.5650)]
+n18 = 2 ** 18
+T18 = [int((78.5650 + 180) / 360 * n18), int((1 - math.asinh(math.tan(math.radians(17.5500))) / math.pi) / 2 * n18)]
+ox, oy = (T18[0] - 2 * T17[0]) * 256, (T18[1] - 2 * T17[1]) * 256
+canvas = np.zeros((2 * H, 2 * W), np.float32)
+hh, ww = dens_hi.shape
+canvas[oy:oy + hh, ox:ox + ww] = dens_hi[:2 * H - oy, :2 * W - ox]
+density = canvas.reshape(H, 2, W, 2).mean(axis=(1, 3))
+Image.fromarray((np.clip(density, 0, 1) * 255).astype(np.uint8)).save(os.path.join(DATA, 'density.png'))
 CELL = 5
+cells = []
 for py in range(0, H - CELL, CELL):
     for px in range(0, W - CELL, CELL):
-        f = canopy_f[py:py + CELL, px:px + CELL].mean()
-        if f < 0.25:
-            continue
-        p = 0.42 if f > 0.6 else 0.12
-        if random.random() > p:
-            continue
-        jx = px + random.random() * CELL; jy = py + random.random() * CELL
-        ix, iy = int(jx), int(jy)
-        if exa[iy, ix]:
-            continue
-        wx = x0 + jx * SX; wz = z0 + jy * SZ
-        ins = inside[iy, ix]
-        s = (0.75 + random.random() * 0.7) * (1.0 if ins else 0.8)
-        # type: 0 broadleaf, 1 tall/slender, 2 scrub
-        if ins:
-            ty = 0 if random.random() < 0.72 else 1
-        else:
-            ty = 2 if random.random() < 0.55 else 0
-        trees.append([round(wx, 1), round(wz, 1), round(s, 2), ty])
+        f = float(density[py:py + CELL, px:px + CELL].mean())
+        base = max(0.0, min(1.0, (f - 0.1) / 0.7)) ** 1.3
+        # the open scrubland beyond the wall is low bush; spend most of the budget on campus trees
+        if not inside[min(H - 1, py + CELL // 2), min(W - 1, px + CELL // 2)]:
+            base *= 0.4
+        if base > 0:
+            cells.append((px, py, f, base))
+TARGET = 21000                                                  # the scene doubles these with companion trees
+k = TARGET / sum(c[3] for c in cells) * 1.18                    # allow for trees rejected by roads and buildings
+trees = []
+n_in = n_out = 0
+for px, py, f, base in cells:
+        expect = min(2.2, k * base)
+        count = int(expect) + (1 if random.random() < expect - int(expect) else 0)
+        for _ in range(count):
+            jx = px + random.random() * CELL; jy = py + random.random() * CELL
+            ix, iy = int(jx), int(jy)
+            if exa[iy, ix]:
+                continue
+            wx = x0 + jx * SX; wz = z0 + jy * SZ
+            ins = inside[iy, ix]
+            # crowns are a little larger where the canopy is closed
+            s = (0.7 + random.random() * 0.6) * (0.85 + 0.35 * f) * (1.0 if ins else 0.85)
+            # type: 0 broadleaf, 1 tall/slender, 2 scrub
+            if ins:
+                ty = 0 if random.random() < 0.72 else 1
+            else:
+                ty = 2 if random.random() < 0.7 - 0.5 * f else 0
+            trees.append([round(wx, 1), round(wz, 1), round(s, 2), ty])
+            if ins: n_in += 1
+            else: n_out += 1
+print('inside campus', n_in, 'outside', n_out)
 print('trees', len(trees))
 
 # ground colour map -----------------------------------------------------------

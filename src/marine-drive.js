@@ -5,6 +5,7 @@ import { grassTex, plainTex, rng } from './textures.js';
 import { surfaceMaterial } from './surfaces.js';
 import { blob, merge, plantMaterials } from './plants.js';
 import { MARINE_LAWNS, marineLayout, sampleLine, offsetPoint } from './marine-drive-layout.js';
+import { GARDEN } from './garden.js';
 
 export function buildMarineDrive(scene) {
   const L=marineLayout(), group=new THREE.Group(); group.name='Marine Drive formal landscaping';
@@ -13,7 +14,9 @@ export function buildMarineDrive(scene) {
   const clay=surfaceMaterial('pavers','#b77552');
   const soil=new THREE.MeshStandardMaterial({map:plainTex('#72513a',303,.16),roughness:1});
   const lawn=new Geo();
-  for(const polygon of MARINE_LAWNS)addFlatPoly(lawn,polygon,[],.065,1/7);
+  // The Rock Garden models its own sunken lawn, so flat turf is only laid outside it.
+  const inGarden=polygon=>GARDEN.poly&&pip(polygon.reduce((t,p)=>t+p[0],0)/polygon.length,polygon.reduce((t,p)=>t+p[1],0)/polygon.length,GARDEN.poly);
+  for(const polygon of MARINE_LAWNS)if(!inGarden(polygon))addFlatPoly(lawn,polygon,[],.065,1/7);
   addFlatPoly(lawn,L.garden,[],.065,1/7);mesh(lawn,turf);
   const edging=new Geo();
   for(const polygon of MARINE_LAWNS)addRibbon(edging,polygon,.45,()=>.09,{closed:true,vScale:1/1.6});

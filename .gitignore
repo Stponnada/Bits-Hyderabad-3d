@@ -4,3 +4,6 @@ shots
 data/tiles
 data/ref
 data/*.jpg
+
+# Satoshi (ITF Free Font License): self-hosting is allowed, redistribution from a public repo is not
+public/fonts/

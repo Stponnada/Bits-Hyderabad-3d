@@ -11,6 +11,7 @@ page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') 
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 await page.goto((process.env.URL || 'http://localhost:5173') + '/?shot=1' + (process.env.UI ? '' : '&ui=0'), { waitUntil: 'load' });
 await page.waitForFunction('window.__ready === true', { timeout: 90000 });
+if (process.env.EVAL) await page.evaluate(process.env.EVAL);
 let i = 0;
 for (const v of views) {
   const a = v.split(',');
